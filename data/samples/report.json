@@ -1,0 +1,66 @@
+{
+  "hotspots": [
+    {
+      "id": "hotspot-001",
+      "centroid": [12.97185, 77.5949],
+      "radius_m": 82.5,
+      "complaint_ids": ["complaint-001", "complaint-002"],
+      "category_mix": {
+        "pothole": 1,
+        "streetlight": 1
+      },
+      "severity": 6.4
+    }
+  ],
+  "verdicts": [
+    {
+      "complaint_id": "complaint-001",
+      "verdict": "suspect",
+      "checks": [
+        {
+          "name": "gps_distance",
+          "passed": true,
+          "detail": "Evidence is within the configured geofence.",
+          "value": 14.2
+        },
+        {
+          "name": "duplicate_hash",
+          "passed": false,
+          "detail": "The submitted image closely matches earlier evidence.",
+          "value": 0.94
+        }
+      ],
+      "confidence": 0.82
+    },
+    {
+      "complaint_id": "complaint-002",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "gps_distance",
+          "passed": false,
+          "detail": "No GPS metadata was available for the closure photo.",
+          "value": null
+        }
+      ],
+      "confidence": 0.45
+    }
+  ],
+  "claims": [
+    {
+      "text": "The hotspot contains two synthetic complaints.",
+      "cites": ["hotspot-001", "complaint-001", "complaint-002"]
+    },
+    {
+      "text": "Complaint complaint-001 has a suspect proof-of-fix verdict.",
+      "cites": ["complaint-001"]
+    }
+  ],
+  "stats": {
+    "complaint_count": 2,
+    "hotspot_count": 1,
+    "verified_count": 0,
+    "suspect_count": 1,
+    "inconclusive_count": 1
+  }
+}
