@@ -1,3 +1,13 @@
-# Compatibility entry point; pyproject.toml is the canonical dependency list.
-# Run from the repository root to install all currently declared extras.
--e .[dev,api,pipeline]
+
+fastapi
+uvicorn[standard]
+pydantic>=2,<3
+numpy
+scikit-learn
+Pillow
+ImageHash
+opencv-python-headless
+python-dotenv
+pytest
+httpx
+ruff
