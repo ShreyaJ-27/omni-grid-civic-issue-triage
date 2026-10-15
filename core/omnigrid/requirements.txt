@@ -1,0 +1,13 @@
+
+fastapi
+uvicorn[standard]
+pydantic
+numpy
+scikit-learn
+Pillow
+ImageHash
+opencv-python-headless
+python-dotenv
+pytest
+httpx
+ruff
