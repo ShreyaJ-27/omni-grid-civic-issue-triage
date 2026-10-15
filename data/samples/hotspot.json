@@ -1,0 +1,11 @@
+{
+  "id": "hotspot-001",
+  "centroid": [12.97185, 77.5949],
+  "radius_m": 82.5,
+  "complaint_ids": ["complaint-001", "complaint-002"],
+  "category_mix": {
+    "pothole": 1,
+    "streetlight": 1
+  },
+  "severity": 6.4
+}

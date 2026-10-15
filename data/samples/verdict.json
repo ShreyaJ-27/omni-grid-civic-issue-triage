@@ -1,0 +1,25 @@
+{
+  "complaint_id": "complaint-001",
+  "verdict": "suspect",
+  "checks": [
+    {
+      "name": "gps_distance",
+      "passed": true,
+      "detail": "Evidence is within the configured geofence.",
+      "value": 14.2
+    },
+    {
+      "name": "duplicate_hash",
+      "passed": false,
+      "detail": "The submitted image closely matches earlier evidence.",
+      "value": 0.94
+    },
+    {
+      "name": "visual_consistency",
+      "passed": false,
+      "detail": "The repair evidence does not clearly show the reported location.",
+      "value": null
+    }
+  ],
+  "confidence": 0.82
+}
