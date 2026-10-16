@@ -2,8 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from core.omnigrid.schemas import (
     Check,
     Claim,
@@ -15,6 +13,7 @@ from core.omnigrid.schemas import (
     Report,
     Verdict,
 )
+from pydantic import ValidationError
 
 SAMPLES = Path(__file__).resolve().parents[1] / "data" / "samples"
 

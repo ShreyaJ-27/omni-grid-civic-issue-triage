@@ -78,3 +78,12 @@ class Settings:
             cluster_eps_meters=_positive_float(values, "CLUSTER_EPS_METERS"),
             cluster_min_samples=_positive_int(values, "CLUSTER_MIN_SAMPLES"),
         )
+
+
+def get_settings(
+    environ: Mapping[str, str] | None = None,
+    dotenv_path: str | Path | None = ".env",
+) -> Settings:
+    """Retrieve runtime settings from environment or default .env."""
+    return Settings.from_env(environ=environ, dotenv_path=dotenv_path)
+

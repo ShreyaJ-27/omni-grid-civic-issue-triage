@@ -1,9 +1,9 @@
 """Shared Pydantic contracts for Omni-Grid pipeline data."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Latitude = Annotated[float, Field(ge=-90, le=90)]
 Longitude = Annotated[float, Field(ge=-180, le=180)]
@@ -46,8 +46,27 @@ class Hotspot(BaseModel):
     centroid: tuple[Latitude, Longitude]
     radius_m: float
     complaint_ids: list[str]
-    category_mix: dict[str, int]
+    category_mix: dict[str, int] = Field(default_factory=dict)
     severity: Annotated[float, Field(ge=0, le=10)]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _remap_category_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "category_counts" in data and "category_mix" not in data:
+                data["category_mix"] = data["category_counts"]
+            elif "category_mix" in data and "category_counts" not in data:
+                data["category_counts"] = data["category_mix"]
+        return data
+
+    @property
+    def complaint_count(self) -> int:
+        return len(self.complaint_ids)
+
+    @property
+    def category_counts(self) -> dict[str, int]:
+        return self.category_mix
+
 
 
 class Check(BaseModel):
