@@ -9,9 +9,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
-from core.omnigrid.config import get_settings
-from core.omnigrid.schemas import Complaint, Hotspot
 from sklearn.cluster import DBSCAN
+
+from .config import get_settings
+from .schemas import Complaint, Hotspot
 
 EARTH_RADIUS_METERS: float = 6_371_000.0
 RECENCY_HALF_LIFE_HOURS: float = 72.0
