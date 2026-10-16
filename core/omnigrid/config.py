@@ -54,7 +54,20 @@ class Settings:
     cluster_eps_meters: float
     cluster_min_samples: int
 
+    @property
+    def GEOFENCE_METERS(self) -> float:
+        return self.geofence_meters
+
+    @property
+    def CLUSTER_EPS_METERS(self) -> float:
+        return self.cluster_eps_meters
+
+    @property
+    def CLUSTER_MIN_SAMPLES(self) -> int:
+        return self.cluster_min_samples
+
     @classmethod
+
     def from_env(
         cls,
         environ: Mapping[str, str] | None = None,
