@@ -1,0 +1,241 @@
+{
+  "metadata": {
+    "seed": 42,
+    "disclaimer": "synthetic_only_no_real_citizen_data",
+    "generated_at": "2026-10-15T21:00:20.657654+00:00",
+    "total_complaints": 500,
+    "open_complaints": 400,
+    "closed_complaints": 100,
+    "planted_hotspots_count": 5,
+    "planted_suspicious_closures_count": 5
+  },
+  "hotspots": [
+    {
+      "id": "hotspot-silk-board",
+      "name": "Silk Board",
+      "centroid": [
+        12.9172,
+        77.6228
+      ],
+      "radius_m": 45.0,
+      "complaint_count": 14,
+      "complaint_ids": [
+        "complaint-001",
+        "complaint-002",
+        "complaint-003",
+        "complaint-004",
+        "complaint-005",
+        "complaint-006",
+        "complaint-007",
+        "complaint-008",
+        "complaint-009",
+        "complaint-010",
+        "complaint-011",
+        "complaint-012",
+        "complaint-013",
+        "complaint-014"
+      ],
+      "category_mix": {
+        "pothole": 9,
+        "waterlogging": 4,
+        "streetlight": 0,
+        "other": 1
+      }
+    },
+    {
+      "id": "hotspot-indiranagar-100ft-rd",
+      "name": "Indiranagar 100ft Rd",
+      "centroid": [
+        12.9784,
+        77.6408
+      ],
+      "radius_m": 45.0,
+      "complaint_count": 13,
+      "complaint_ids": [
+        "complaint-015",
+        "complaint-016",
+        "complaint-017",
+        "complaint-018",
+        "complaint-019",
+        "complaint-020",
+        "complaint-021",
+        "complaint-022",
+        "complaint-023",
+        "complaint-024",
+        "complaint-025",
+        "complaint-026",
+        "complaint-027"
+      ],
+      "category_mix": {
+        "pothole": 1,
+        "waterlogging": 1,
+        "streetlight": 8,
+        "other": 3
+      }
+    },
+    {
+      "id": "hotspot-domlur-flyover",
+      "name": "Domlur Flyover",
+      "centroid": [
+        12.9609,
+        77.6387
+      ],
+      "radius_m": 45.0,
+      "complaint_count": 15,
+      "complaint_ids": [
+        "complaint-028",
+        "complaint-029",
+        "complaint-030",
+        "complaint-031",
+        "complaint-032",
+        "complaint-033",
+        "complaint-034",
+        "complaint-035",
+        "complaint-036",
+        "complaint-037",
+        "complaint-038",
+        "complaint-039",
+        "complaint-040",
+        "complaint-041",
+        "complaint-042"
+      ],
+      "category_mix": {
+        "pothole": 3,
+        "waterlogging": 11,
+        "streetlight": 1,
+        "other": 0
+      }
+    },
+    {
+      "id": "hotspot-jayanagar-4th-block",
+      "name": "Jayanagar 4th Block",
+      "centroid": [
+        12.9304,
+        77.5833
+      ],
+      "radius_m": 45.0,
+      "complaint_count": 12,
+      "complaint_ids": [
+        "complaint-043",
+        "complaint-044",
+        "complaint-045",
+        "complaint-046",
+        "complaint-047",
+        "complaint-048",
+        "complaint-049",
+        "complaint-050",
+        "complaint-051",
+        "complaint-052",
+        "complaint-053",
+        "complaint-054"
+      ],
+      "category_mix": {
+        "pothole": 3,
+        "waterlogging": 0,
+        "streetlight": 0,
+        "other": 9
+      }
+    },
+    {
+      "id": "hotspot-hebbal",
+      "name": "Hebbal",
+      "centroid": [
+        13.0354,
+        77.597
+      ],
+      "radius_m": 45.0,
+      "complaint_count": 14,
+      "complaint_ids": [
+        "complaint-055",
+        "complaint-056",
+        "complaint-057",
+        "complaint-058",
+        "complaint-059",
+        "complaint-060",
+        "complaint-061",
+        "complaint-062",
+        "complaint-063",
+        "complaint-064",
+        "complaint-065",
+        "complaint-066",
+        "complaint-067",
+        "complaint-068"
+      ],
+      "category_mix": {
+        "pothole": 9,
+        "waterlogging": 2,
+        "streetlight": 2,
+        "other": 1
+      }
+    }
+  ],
+  "suspicious_closures": {
+    "mismatched_gps": [
+      {
+        "complaint_id": "complaint-003",
+        "type": "mismatched_gps",
+        "description": "Closure image EXIF GPS is ~23.1 km away from complaint location (>5 km)",
+        "complaint_coords": [
+          12.917161,
+          77.623024
+        ],
+        "closure_media_path": "data/synthetic/media/media_11.jpg",
+        "exif_gps_coords": [
+          13.125,
+          77.63
+        ],
+        "distance_km": 23.12
+      },
+      {
+        "complaint_id": "complaint-017",
+        "type": "mismatched_gps",
+        "description": "Closure image EXIF GPS is ~21.5 km away from complaint location (>5 km)",
+        "complaint_coords": [
+          12.978192,
+          77.640864
+        ],
+        "closure_media_path": "data/synthetic/media/media_12.jpg",
+        "exif_gps_coords": [
+          12.785,
+          77.65
+        ],
+        "distance_km": 21.53
+      }
+    ],
+    "duplicate_evidence": [
+      {
+        "complaint_id": "complaint-030",
+        "type": "duplicate_evidence",
+        "description": "Closure evidence image is identical duplicate of complaint-045",
+        "closure_media_path": "data/synthetic/media/media_14.jpg",
+        "duplicate_with_complaint_id": "complaint-045",
+        "duplicate_with_media_path": "data/synthetic/media/media_15.jpg"
+      },
+      {
+        "complaint_id": "complaint-045",
+        "type": "duplicate_evidence",
+        "description": "Closure evidence image is identical duplicate of complaint-030",
+        "closure_media_path": "data/synthetic/media/media_15.jpg",
+        "duplicate_with_complaint_id": "complaint-030",
+        "duplicate_with_media_path": "data/synthetic/media/media_14.jpg"
+      }
+    ],
+    "inconsistent_defect": [
+      {
+        "complaint_id": "complaint-018",
+        "type": "inconsistent_defect",
+        "description": "Streetlight complaint closed with pothole repair image evidence",
+        "complaint_category": "streetlight",
+        "closure_defect": "pothole",
+        "closure_media_path": "data/synthetic/media/media_13.jpg"
+      }
+    ]
+  },
+  "suspicious_closure_ids": [
+    "complaint-003",
+    "complaint-017",
+    "complaint-030",
+    "complaint-045",
+    "complaint-018"
+  ]
+}
