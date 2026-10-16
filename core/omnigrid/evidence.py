@@ -335,6 +335,7 @@ def extract_evidence_meta(
 def extract_complaint_evidence(
     complaint: Complaint | dict[str, Any],
     base_dir: Path | str | None = None,
+    keyframe_dir: Path | str | None = None,
 ) -> list[EvidenceMeta]:
     """Extract evidence records for all media in complaint and closure."""
     results: list[EvidenceMeta] = []
@@ -361,7 +362,6 @@ def extract_complaint_evidence(
     else:
         return results
 
-
     root_dir = Path(base_dir) if base_dir is not None else Path.cwd()
 
     for item in media_items:
@@ -373,6 +373,23 @@ def extract_complaint_evidence(
         if not resolved_path.is_absolute():
             resolved_path = root_dir / resolved_path
 
+        if resolved_path.suffix.lower() in VIDEO_EXTENSIONS:
+            try:
+                from core.omnigrid.video import extract_video_keyframes
+
+                keyframes = extract_video_keyframes(
+                    complaint_id=cid,
+                    video_path=resolved_path,
+                    complaint_coords=coords,
+                    output_dir=keyframe_dir,
+                    raise_on_error=False,
+                )
+                results.extend(kf.evidence_meta for kf in keyframes)
+            except Exception:
+                continue
+            continue
+
+
         try:
             meta = extract_evidence_meta(
                 complaint_id=cid,
@@ -381,7 +398,8 @@ def extract_complaint_evidence(
             )
             results.append(meta)
         except ValueError:
-            # Skip unsupported formats (e.g. video) during bulk complaint extraction
+            # Skip unreadable or corrupted files during bulk extraction
             continue
+
 
     return results
