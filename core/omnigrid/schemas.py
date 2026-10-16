@@ -50,7 +50,28 @@ class EvidenceMeta(BaseModel):
         return self.distance_m <= get_settings().GEOFENCE_METERS
 
 
+class VideoKeyframe(BaseModel):
+    complaint_id: str
+    video_path: str
+    frame_index: int
+    timestamp_sec: float
+    keyframe_path: str
+    evidence_meta: EvidenceMeta
+
+    @property
+    def source_video_path(self) -> str:
+        return self.video_path
+
+    @property
+    def phash(self) -> str:
+        return self.evidence_meta.phash
+
+
+VideoEvidenceMeta = VideoKeyframe
+
+
 class Hotspot(BaseModel):
+
 
     id: str
     centroid: tuple[Latitude, Longitude]
