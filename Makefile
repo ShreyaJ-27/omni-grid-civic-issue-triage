@@ -3,7 +3,7 @@
 PYTHON ?= python
 
 install:
-	$(PYTHON) -m pip install -e ".[dev]"
+	$(PYTHON) -m pip install -e ".[dev,pipeline]"
 
 test:
 	$(PYTHON) -m pytest
@@ -16,5 +16,4 @@ demo:
 	$(PYTHON) -m omnigrid.cli triage data/synthetic/complaints.geojson
 
 export-demo:
-	@$(PYTHON) -c "from pathlib import Path; import sys; missing = [str(path) for path in (Path('core/omnigrid/cli.py'), Path('data/synthetic/complaints.geojson')) if not path.is_file()]; print('Error: export-demo requires the real Omni-Grid CLI export workflow and synthetic complaint input; missing: ' + ', '.join(missing) if missing else ''); sys.exit(bool(missing))"
-	$(PYTHON) -m omnigrid.cli export data/synthetic/complaints.geojson web/demo/report.json
+	@$(PYTHON) -c "import sys; print('Error: report export is not implemented.'); sys.exit(1)"
