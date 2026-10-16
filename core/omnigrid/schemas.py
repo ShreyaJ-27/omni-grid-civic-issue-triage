@@ -102,7 +102,7 @@ class Hotspot(BaseModel):
 
 class Check(BaseModel):
     name: str
-    passed: bool
+    passed: bool | None = None
     detail: str
     value: float | None = None
 
