@@ -40,8 +40,18 @@ class EvidenceMeta(BaseModel):
     phash: str
     distance_m: float | None
 
+    @property
+    def is_within_geofence(self) -> bool:
+        """Check if distance is within the runtime geofence threshold."""
+        if self.distance_m is None:
+            return False
+        from core.omnigrid.config import get_settings
+
+        return self.distance_m <= get_settings().GEOFENCE_METERS
+
 
 class Hotspot(BaseModel):
+
     id: str
     centroid: tuple[Latitude, Longitude]
     radius_m: float
