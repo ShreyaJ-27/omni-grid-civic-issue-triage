@@ -36,7 +36,7 @@ values raise an error without echoing the supplied value.
 - `make install` — install the editable package, development tools, and
   deterministic clustering/media dependencies.
 - `make test` — run pytest.
-- `make lint` — run Ruff over `api/`, `core/`, `tests/`, and `scripts/`.
+- `make lint` — run Ruff over `core/`, `tests/`, and `scripts/`.
 - `make demo` — run the complete CLI pipeline on
   `data/synthetic/complaints.geojson`. Set `LLM_MOCK=true` for a deterministic,
   offline run that uses template claims and does not claim model inference.
@@ -48,12 +48,8 @@ The API dependencies remain optional. The `pipeline` extra is installed by
 NumPy, scikit-learn, Pillow, ImageHash, OpenCV, and piexif:
 
 ```sh
-python -m pip install -e ".[dev,pipeline,api]"
+python -m pip install -e ".[api]"
 ```
-
-The optional local FastAPI service and its upload contract are documented in
-[`docs/api.md`](docs/api.md). It uses the same configuration and pipeline as the
-CLI and binds to localhost in the documented startup command.
 
 ## CLI and Agent Skill
 
@@ -70,11 +66,10 @@ contract JSON; `triage` runs the complete pipeline and returns a schema-valid
 `Report`. Evidence paths are confined to the selected media root. Deterministic
 closure checks always run; vision checks run only for comparable media when
 live inference is enabled. Mock mode skips model calls and uses validated
-template claims. See [`docs/pipeline.md`](docs/pipeline.md) for pipeline
-statistics and offline behavior, [`docs/api.md`](docs/api.md) for the optional
-HTTP service, [`skill/omni-grid/SKILL.md`](skill/omni-grid/SKILL.md) for agent
-instructions, and [`docs/skill-smoke-test.md`](docs/skill-smoke-test.md) for the
-manual live-agent test.
+template claims. See [`docs/pipeline.md`](docs/pipeline.md) for the API,
+statistics, and offline example, [`skill/omni-grid/SKILL.md`](skill/omni-grid/SKILL.md)
+for agent instructions, and [`docs/skill-smoke-test.md`](docs/skill-smoke-test.md)
+for the manual live-agent test.
 
 On Windows, GNU Make is not included with Python; install it separately or run
 the equivalent Python commands shown above. CI uses the project commands
