@@ -3,10 +3,10 @@
 This directory contains the static web frontend for Omni-Grid civic issue triage.
 
 ## Features
-- **Data-Driven:** Loads real pipeline output from `demo/report.json` via standard browser `fetch()`.
+- **Data-Driven:** Loads an exported `Report` from `demo/report.json` via standard browser `fetch()`. The checked-in demo data is synthetic.
 - **Zero-Dependency Core:** Pure vanilla HTML5/ES6 without heavy frameworks.
 - **Interactive Leaflet Map:** Renders complaint markers and hotspot circle overlays with OpenStreetMap tiles.
-- **Fail-Safe Fallback:** If `demo/report.json` is missing or inaccessible (e.g. running via `file://`), the page automatically falls back to an embedded sample dataset with a clear notification banner.
+- **Fail-Safe Fallback:** If `demo/report.json` is missing or inaccessible (e.g. running via `file://`), the page falls back to an embedded sample dataset with a clear notification banner. The fallback is not current pipeline output.
 - **Proof-of-Fix Inspection:** Displays deterministic verification checks (GPS geofence, duplicate pHash, chronological timestamps, defect consistency) and evidence photo thumbnails.
 - **Summary Claims:** Surfaces validated narrative claims with clickable citation pills.
 

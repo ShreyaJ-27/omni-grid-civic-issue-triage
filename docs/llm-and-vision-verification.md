@@ -6,16 +6,25 @@ Omni-Grid provides a provider-agnostic LLM client (`core/omnigrid/llm.py`) and a
 
 ## 1. Environment Variables & Safe Configuration
 
-Runtime configuration is managed through environment variables or a local `.env` file (copied from `.env.example`). The `.env` file is ignored by Git; secrets or live tokens must never be committed to source control.
+Endpoint, key, model, and geospatial settings are managed through environment
+variables or a local `.env` file (copied from `.env.example`). `LLM_MOCK` and
+`LLM_TIMEOUT` are process-environment settings only. The `.env` file is ignored
+by Git; secrets or live tokens must never be committed to source control.
 
 | Environment Variable | Default | Purpose |
 |----------------------|---------|---------|
-| `LLM_BASE_URL` | `http://localhost:11434/v1` | Base URL for OpenAI-compatible endpoint. |
-| `LLM_API_KEY` | `ollama` | API authentication key or placeholder. Redacted in logs and exceptions. |
+| `LLM_BASE_URL` | `http://localhost:11434/v1` | Base URL for an OpenAI-compatible endpoint. |
+| `LLM_API_KEY` | `ollama` | API authentication key or local placeholder. |
 | `LLM_TEXT_MODEL` | `qwen2.5:7b-instruct` | Model identifier used for text generation and structured summaries. |
 | `LLM_VISION_MODEL` | `qwen2.5vl:7b` | Model identifier used for image inspection and pair comparison. |
-| `LLM_TIMEOUT` | `30.0` | Request timeout in seconds. |
-| `LLM_MOCK` | `false` | Enable offline mock mode (no network, API keys, or model downloads required). |
+| `LLM_TIMEOUT` | `30.0` seconds | Request timeout. Read from the process environment only. |
+| `LLM_MOCK` | `false` | Enables offline mock mode. Read from the process environment only. |
+
+The current configuration loader reads endpoint, key, model, and geospatial
+settings from `.env` (then lets process environment variables override them).
+`LLM_TIMEOUT` and `LLM_MOCK` are read directly from the process environment;
+putting either value in `.env` does not change runtime behavior. Set them in
+the shell that starts the CLI, exporter, API, or evaluation command.
 
 ---
 
@@ -43,14 +52,16 @@ To run locally with open-weight models:
 
 ## 3. Hosted OpenAI-Compatible Provider Setup
 
-Switching to a hosted provider (e.g., OpenRouter, Together AI, Groq, or Hugging Face Inference Endpoints) requires environment changes only—no code edits:
+For a hosted provider, use an endpoint that supports the OpenAI-compatible
+chat-completion requests and, if using vision, image input required by the
+configured model. Set the provider's documented base URL, model identifiers,
+and API key; provider compatibility is not certified by this project:
 
 ```bash
-# Example: Using a hosted provider
-export LLM_BASE_URL="https://api.together.xyz/v1"
-export LLM_API_KEY="your-together-api-key"
-export LLM_TEXT_MODEL="Qwen/Qwen2.5-7B-Instruct-Turbo"
-export LLM_VISION_MODEL="meta-llama/Llama-Vision-Free"
+export LLM_BASE_URL="https://<provider-base-url>/v1"
+export LLM_API_KEY="<your-provider-key>"
+export LLM_TEXT_MODEL="<provider-text-model-id>"
+export LLM_VISION_MODEL="<provider-vision-model-id>"
 ```
 
 The client will automatically route completions and vision requests to the hosted URL with appropriate authorization headers.
@@ -151,7 +162,11 @@ To prevent expensive, redundant model inference:
 
 ## 10. Privacy and Model Licensing Considerations
 
-- **Privacy**: Prompts contain only task-specific instructions and the relevant defect images. Citizen names, phone numbers, email addresses, or unneeded metadata are strictly excluded from prompts.
+- **Privacy**: The code does not add complaint contact fields to model prompts,
+  but selected image bytes are sent for vision requests and may themselves
+  contain faces, license plates, or other identifying details. Remove or
+  anonymize such content where appropriate and do not send sensitive images to
+  an external provider without authorization.
 - **Processing location**: The default endpoint is local Ollama, but the client can be configured for a hosted OpenAI-compatible provider. Vision requests transmit selected image bytes, and text requests transmit their prompts and computed facts, to the configured endpoint. Confirm authorization and the provider's retention terms before sending non-synthetic or personally identifying content. Mock mode makes no network requests.
 - **Media paths**: Bulk evidence extraction confines complaint media to `base_dir` (or the current working directory when omitted). Closure verification confines complaint media to `media_dir` (or the repository root when omitted). Traversal paths, symlinks resolving outside that root, and absolute paths outside it are rejected; rejected closure evidence produces an inconclusive verdict. Pass the trusted media directory when processing a dataset outside the repository.
-- **Model Licensing**: When selecting open-weight models, verify their model cards and license agreements (e.g., Apache 2.0 for Qwen2.5, Llama Community License for Llama 3.2). Commercial deployment must ensure compliance with provider terms.
+- **Model Licensing**: Review the selected model's current model card and license, and the provider's terms, before use. This repository does not certify model licenses or hosted-provider terms.
