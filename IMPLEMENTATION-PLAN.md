@@ -2,7 +2,15 @@
 
 Repo: `ShreyaJ-27/omni-grid-civic-issue-triage` | Track 2, problem statement **O3: Trustworthy and Verifiable AI** | Team of 3 | Build window 13 to 18 Oct 2026
 
-Goal for today: phases 1 to 10 working locally. Tomorrow: deploy, polish, rehearse.
+> **Historical planning document:** the dates, owners, goals, and technology
+> options below record the original hackathon plan, not current delivery
+> status. Proposed items such as CSV/ward-polygon ingestion and hosting are
+> not claims that those features were implemented. For verified capabilities,
+> commands, and limitations, use the current [README](README.md) and linked
+> component documentation.
+
+Original goal: phases 1 to 10 working locally, followed by deployment, polish,
+and rehearsal.
 
 ---
 

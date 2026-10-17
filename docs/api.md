@@ -16,9 +16,11 @@ python -m pip install -e ".[dev,pipeline,api]"
 Configuration uses the existing centralized settings and `.env` loading. Copy
 `.env.example` to the ignored `.env` file only if you need to customize it.
 `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_TEXT_MODEL`, `LLM_VISION_MODEL`,
-`LLM_TIMEOUT`, `GEOFENCE_METERS`, `CLUSTER_EPS_METERS`, and
-`CLUSTER_MIN_SAMPLES` have the same meaning as for the CLI. Credentials stay
-on the server and must never be sent in an upload or returned by the API.
+`GEOFENCE_METERS`, `CLUSTER_EPS_METERS`, and `CLUSTER_MIN_SAMPLES` load from
+`.env` or the process environment. `LLM_TIMEOUT` and `LLM_MOCK` are read from
+the process environment only; values for these settings in `.env` are not
+used. Credentials stay on the server and must never be sent in an upload or
+returned by the API.
 
 For deterministic, offline operation, enable the pipeline's existing mock
 mode. No provider, key, or model download is needed:
