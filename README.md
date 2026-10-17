@@ -48,7 +48,7 @@ The API dependencies remain optional. The `pipeline` extra is installed by
 NumPy, scikit-learn, Pillow, ImageHash, OpenCV, and piexif:
 
 ```sh
-python -m pip install -e ".[api]"
+python -m pip install -e ".[dev,pipeline,api]"
 ```
 
 ## CLI and Agent Skill
