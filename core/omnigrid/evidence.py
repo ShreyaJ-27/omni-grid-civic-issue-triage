@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,8 @@ import piexif
 from core.omnigrid.config import get_settings
 from core.omnigrid.schemas import Complaint, EvidenceMeta
 from PIL import Image, UnidentifiedImageError
+
+logger = logging.getLogger(__name__)
 
 EARTH_RADIUS_METERS: float = 6_371_000.0
 
@@ -363,15 +366,25 @@ def extract_complaint_evidence(
         return results
 
     root_dir = Path(base_dir) if base_dir is not None else Path.cwd()
+    allowed_root = root_dir.resolve()
 
     for item in media_items:
         mpath = item.path if hasattr(item, "path") else item.get("path")
         if not mpath:
             continue
 
-        resolved_path = Path(mpath)
-        if not resolved_path.is_absolute():
-            resolved_path = root_dir / resolved_path
+        media_path = Path(mpath)
+        try:
+            resolved_path = (
+                media_path if media_path.is_absolute() else allowed_root / media_path
+            ).resolve()
+            resolved_path.relative_to(allowed_root)
+        except (OSError, RuntimeError, ValueError):
+            logger.warning(
+                "Skipping media evidence outside configured directory: %s",
+                media_path.name,
+            )
+            continue
 
         if resolved_path.suffix.lower() in VIDEO_EXTENSIONS:
             try:
@@ -382,13 +395,15 @@ def extract_complaint_evidence(
                     video_path=resolved_path,
                     complaint_coords=coords,
                     output_dir=keyframe_dir,
-                    raise_on_error=False,
+                    raise_on_error=True,
                 )
                 results.extend(kf.evidence_meta for kf in keyframes)
-            except Exception:
+            except (FileNotFoundError, OSError, ValueError) as exc:
+                logger.warning(
+                    "Skipping video evidence %s: %s", resolved_path.name, exc
+                )
                 continue
             continue
-
 
         try:
             meta = extract_evidence_meta(
@@ -397,9 +412,8 @@ def extract_complaint_evidence(
                 complaint_coords=coords,
             )
             results.append(meta)
-        except ValueError:
-            # Skip unreadable or corrupted files during bulk extraction
+        except (FileNotFoundError, ValueError) as exc:
+            logger.warning("Skipping image evidence %s: %s", resolved_path.name, exc)
             continue
-
 
     return results

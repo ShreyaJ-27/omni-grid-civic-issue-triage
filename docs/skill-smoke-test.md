@@ -34,8 +34,8 @@ testing as appropriate.
 
 1. Start Claude Code with the repository as the working directory and confirm
    `/omni-grid` appears as an available skill. Inspect its displayed
-   description; it should mention civic complaints, supported triage steps,
-   and the unfinished evidence/verification/summary stages. If it is missing,
+   description; it should distinguish the implemented Python evidence and
+   verification functions from the validator-only CLI commands. If it is missing,
    check that the client is using the intended checkout and that the
    `SKILL.md` file is directly inside `.claude\skills\omni-grid`.
 2. Without naming the skill, submit:
@@ -46,23 +46,23 @@ testing as appropriate.
    discovered, whether the natural-language request triggered it, and the
    exact commands/wrappers actually executed. Discovery alone does not prove
    automatic triggering.
-4. Expected behavior with the current implementation is to run ingestion and
-   clustering, typically through `triage` or its wrapper. The output is a JSON
-   `Report` with `hotspots`, empty `verdicts` and `claims`, and `stats` listing
-   completed stages (`ingest`, `cluster`) and unavailable stages
-   (`evidence`, `verify`, `summarize`). The agent must explicitly state that
-   closure evidence cannot yet be assessed; it must not claim closures are
-   verified or suspect without an implemented check.
-5. Validate captured CLI JSON without exposing complaint text unnecessarily:
+4. For hotspot-only analysis, expected behavior is to run ingestion and
+   clustering through `triage` or its wrapper. That CLI output is a partial
+   `Report` with empty `verdicts` and `claims`; `stats` lists later stages as
+   unavailable. For the committed synthetic sample when closure checks and a
+   complete web report are requested, the agent may run
+   `python scripts/export_demo_report.py`. That exporter includes deterministic
+   closure checks, mock-mode damage scoring, and a validated summary fallback;
+   it does not perform a live model call or accept arbitrary input paths.
+5. Validate captured output without exposing complaint text unnecessarily:
 
    ```powershell
-   py -3.11 -c "import json; from omnigrid.schemas import Report; data=json.load(open('report.json', encoding='utf-8')); Report.model_validate(data); print('Report schema valid')"
+   py -3.11 -c "import json; from omnigrid.schemas import Report; data=json.load(open('web/demo/report.json', encoding='utf-8')); Report.model_validate(data); print('Report schema valid')"
    ```
 
-   Save CLI JSON to `report.json` only if it is an intended local output; the
-   repository ignores generated output directories, not arbitrary filenames.
-   Do not commit generated data. When testing interactively, piping the
-   command output to a parser is preferable to storing it.
+   The demo exporter refreshes its intended tracked artifact and media. Do not
+   commit unrelated generated output. When testing CLI output interactively,
+   piping the command output to a parser is preferable to storing it.
 6. Mark this acceptance test **not verified** until the agent's observable
    behavior confirms the automatic trigger, command invocation, and validated
    output. Record any dependency errors or corrections below in your own test

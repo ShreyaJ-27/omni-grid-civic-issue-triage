@@ -26,7 +26,7 @@ if str(REPO_ROOT) not in sys.path:
 from core.omnigrid.cli import _load_complaints  # noqa: E402
 from core.omnigrid.cluster import cluster_complaints  # noqa: E402
 from core.omnigrid.damage import (  # noqa: E402
-    DamageSeverityScore,
+    DamageSeverityCache,
     score_damage_severity,
 )
 from core.omnigrid.llm import LLMClient  # noqa: E402
@@ -51,61 +51,52 @@ def export_demo(
     output_report_path: Path = EXPORT_REPORT_PATH,
     output_media_dir: Path = WEB_MEDIA_DIR,
     use_mock_llm: bool = True,
+    damage_cache: DamageSeverityCache | None = None,
 ) -> Report:
     """Generate and export the complete demo Report and copy media assets."""
     logger.info("Loading complaints from %s...", input_geojson)
     complaints: list[Complaint] = _load_complaints(input_geojson)
     logger.info("Loaded %d complaints.", len(complaints))
 
-    # 1. Spatial clustering
-    logger.info("Running spatial DBSCAN clustering...")
-    hotspots = cluster_complaints(complaints)
-    logger.info("Identified %d hotspots.", len(hotspots))
-
-    # 2. Proof-of-fix verification on closed complaints with media
-    closed_with_media = [
-        c for c in complaints if c.status == "closed" and c.closure and c.closure.media
-    ]
-    logger.info(
-        "Verifying %d closed complaints with proof-of-fix evidence...",
-        len(closed_with_media),
-    )
-    verdicts: list[Verdict] = verify_closed_complaints(
-        closed_with_media,
-        use_vision=False,  # deterministic checks first
-    )
-    logger.info("Produced %d verdicts.", len(verdicts))
-
-    # 3. Vision damage scoring for complaints with media
+    # 1. Score available complaint photos before clustering so scores contribute
+    # to the documented hotspot severity formula.
     logger.info("Scoring damage severity for available media...")
     llm_client = LLMClient(mock=use_mock_llm)
-    # Enqueue deterministic mock scores for complaints if in mock mode
     damage_scores: dict[str, float] = {}
     for c in complaints:
         if c.media:
             first_media = c.media[0]
             media_file = REPO_ROOT / first_media.path
             if media_file.is_file():
-                if use_mock_llm:
-                    # Deterministic realistic score based on category
-                    score_val = 0.75 if c.category == "pothole" else 0.50
-                    llm_client.set_mock_response(
-                        DamageSeverityScore(
-                            score=score_val,
-                            reasoning=(
-                                "Visible infrastructure defect corresponding to "
-                                f"{c.category}."
-                            ),
-                            evidence_id=f"damage-{c.id}",
-                        )
-                    )
                 score_obj = score_damage_severity(
                     image_path=media_file,
                     evidence_id=f"damage-{c.id}",
                     llm_client=llm_client,
+                    cache=damage_cache,
                 )
                 if score_obj is not None:
                     damage_scores[c.id] = score_obj.score
+    logger.info("Computed %d damage severity scores.", len(damage_scores))
+
+    # 2. Spatial clustering consumes any available visual damage scores.
+    logger.info("Running spatial DBSCAN clustering...")
+    reference_time = max((c.created_at for c in complaints), default=None)
+    hotspots = cluster_complaints(
+        complaints,
+        reference_time=reference_time,
+        damage_scores=damage_scores,
+    )
+    logger.info("Identified %d hotspots.", len(hotspots))
+
+    # 3. Verify every closed complaint, including cases with missing evidence.
+    logger.info(
+        "Verifying closed complaints with proof-of-fix evidence..."
+    )
+    verdicts: list[Verdict] = verify_closed_complaints(
+        complaints,
+        use_vision=False,  # deterministic checks first
+    )
+    logger.info("Produced %d verdicts.", len(verdicts))
 
     # 4. Generate structured summary
     logger.info("Synthesizing structured summary claims...")
@@ -133,8 +124,7 @@ def export_demo(
         logger.info("Copying media assets to %s...", output_media_dir)
         for media_file in SYNTHETIC_MEDIA_DIR.glob("*.jpg"):
             dest_file = output_media_dir / media_file.name
-            if not dest_file.exists():
-                shutil.copy2(media_file, dest_file)
+            shutil.copy2(media_file, dest_file)
 
     # 7. Write exported report JSON
     report_dict: dict[str, Any] = report.model_dump(mode="json")
@@ -143,17 +133,24 @@ def export_demo(
         for c in report_dict["complaints"]:
             for m in c.get("media", []):
                 p = m.get("path", "")
-                if "media_" in p:
-                    filename = Path(p).name
+                filename = Path(p).name
+                if (
+                    "media_" in filename
+                    and (SYNTHETIC_MEDIA_DIR / filename).is_file()
+                ):
                     m["path"] = f"demo/media/{filename}"
             closure = c.get("closure")
             if closure:
                 for m in closure.get("media", []):
                     p = m.get("path", "")
-                    if "media_" in p:
-                        filename = Path(p).name
+                    filename = Path(p).name
+                    if (
+                        "media_" in filename
+                        and (SYNTHETIC_MEDIA_DIR / filename).is_file()
+                    ):
                         m["path"] = f"demo/media/{filename}"
 
+    Report.model_validate(report_dict)
     output_report_path.write_text(
         json.dumps(report_dict, indent=2, ensure_ascii=False),
         encoding="utf-8",

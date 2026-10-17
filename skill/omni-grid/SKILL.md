@@ -1,6 +1,6 @@
 ---
 name: omni-grid
-description: Use for civic-complaint GeoJSON ingestion, hotspot analysis, validating Omni-Grid evidence/verdict/report JSON, or running the available triage steps. Trigger on requests to analyze civic complaints, find geographic clusters, inspect closure evidence, or use the Omni-Grid CLI; clearly disclose that evidence extraction, closure verification, and narrative summarization are not implemented.
+description: Use for civic-complaint GeoJSON ingestion, hotspot analysis, evidence extraction and closure checks through the Omni-Grid Python library, validating evidence/verdict/report JSON, or running the available triage and demo-export workflows. Trigger on requests to analyze civic complaints, find geographic clusters, inspect closure evidence, or use the Omni-Grid CLI; explain that validator-only CLI commands do not execute the corresponding pipeline stages.
 license: MIT
 compatibility: Python 3.11+ with this repository's installed dependencies.
 metadata:
@@ -49,10 +49,10 @@ stderr and exit non-zero. The CLI validates input with the shared contracts in
 | Command | Input and behavior | Successful JSON output |
 | --- | --- | --- |
 | `ingest INPUT` | Parse a complaint JSON file or GeoJSON, convert Point features to `Complaint`, and validate all records. | Array of `Complaint` |
-| `evidence INPUT` | Validate existing evidence metadata only. It does **not** read photos, extract EXIF, compute pHash, or calculate geofence distance. | Array of `EvidenceMeta` |
+| `evidence INPUT` | Validate existing evidence metadata only. It does **not** read photos or extract metadata. | Array of `EvidenceMeta` |
 | `cluster INPUT [options]` | Ingest complaints and run the implemented DBSCAN/haversine clustering and explainable severity scoring. | Array of `Hotspot` |
-| `verify INPUT` | Validate existing verdict records only. It does **not** evaluate closure evidence or make a verification decision. | Array of `Verdict` |
-| `summarize INPUT` | Validate an existing report only. It does **not** generate narrative claims or check citations. | `Report` object |
+| `verify INPUT` | Validate existing verdict records only. It does **not** evaluate closure evidence. | Array of `Verdict` |
+| `summarize INPUT` | Validate an existing report only. It does **not** generate narrative claims. | `Report` object |
 | `triage INPUT [options]` | Run ingestion and clustering only. It returns a partial report and names unavailable stages in `stats`. | Partial `Report` object |
 
 `cluster` and `triage` accept `--eps-meters`, `--min-samples`, and
@@ -60,13 +60,14 @@ stderr and exit non-zero. The CLI validates input with the shared contracts in
 from the existing configuration. Use `--help` on the command or a subcommand
 for the full usage.
 
-Evidence extraction, proof-of-fix checks, LLM/vision calls, report generation,
-and citation validation have not been implemented in this repository. Do not
-describe their contract validators as performing those operations. A partial
-`triage` report intentionally has empty `verdicts` and `claims`; it does not
-pretend to have verified closures. If a user needs one of the missing stages,
-explain the limitation rather than inferring a result or returning fabricated
-scores.
+The Python library implements evidence extraction, deterministic proof-of-fix
+checks, optional vision checks, damage scoring, summary generation, and
+citation validation. The validator-only CLI commands do not execute those
+operations. `triage` intentionally returns a partial report with empty
+`verdicts` and `claims`. For the integrated committed synthetic demo, run
+`python scripts/export_demo_report.py`; it uses mock mode by default and writes
+the report and media consumed by the web page. This exporter is not a general
+pipeline command for arbitrary input paths.
 
 ## Workflow
 
@@ -78,15 +79,15 @@ scores.
    JSON. Do not parse stderr as a result.
 4. For hotspot analysis, use `cluster` or `triage`. Report that the current
    triage result covers ingestion and clustering only.
-5. If asked to assess closure evidence, state that this repository cannot yet
-   extract or evaluate it. `evidence` and `verify` currently validate
-   precomputed records only.
+5. If asked to assess evidence, use the implemented Python evidence and
+   verification functions where suitable; do not claim that the `evidence` or
+   `verify` validator commands perform extraction or checks.
 6. Treat deterministic code checks as authoritative over any model opinion.
-   This version has no LLM or vision-model stage. Future model opinions must
-   never override deterministic evidence checks.
+   Optional vision checks must never override failed deterministic evidence.
 7. Describe a flagged case as **suspect** or **inconclusive**, never as fraud.
-   Any future suspect closure finding requires human review. Do not identify
-   people in media or repeat complaint PII unnecessarily.
+   Suspect closure findings require human review. Do not identify people in
+   media or repeat complaint PII unnecessarily. Before using a hosted model
+   endpoint, disclose that selected images and task prompts are sent to it.
 
 ## Examples
 

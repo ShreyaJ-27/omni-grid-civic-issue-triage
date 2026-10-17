@@ -45,6 +45,13 @@ To regenerate `web/demo/report.json` and copy updated media assets from `data/sy
 python scripts/export_demo_report.py
 ```
 
+The exporter uses deterministic mock mode by default and does not contact an
+LLM service. It computes available photo damage scores before hotspot
+clustering and emits one verdict for every closed complaint, including
+inconclusive results when evidence is missing. The report is validated against
+the shared `Report` schema before it is written. Running the exporter with a
+hosted model configuration is not supported by this default demo command.
+
 This script:
 1. Ingests `data/synthetic/complaints.geojson`.
 2. Runs DBSCAN clustering to derive `Hotspot` records.

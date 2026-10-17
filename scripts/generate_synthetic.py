@@ -32,6 +32,7 @@ if str(CORE_DIR) not in sys.path:
 from core.omnigrid.schemas import Closure, Complaint, Media  # noqa: E402
 from scripts.generate_sample_media import (  # noqa: E402
     DEFAULT_MEDIA_DIR,
+    EXPECTED_MEDIA_COUNT,
     generate_sample_media,
 )
 
@@ -143,14 +144,14 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return r * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
 
-def generate_synthetic_data() -> (
+def generate_synthetic_data(seed: int = RANDOM_SEED) -> (
     tuple[list[Complaint], dict[str, Any], dict[str, Any]]
 ):
     """Generate 500 validated complaints, GeoJSON FeatureCollection, and answer key."""
-    rng = random.Random(RANDOM_SEED)
+    rng = random.Random(seed)
 
     # Ensure media files exist
-    if not (DEFAULT_MEDIA_DIR / "media_15.jpg").is_file():
+    if len(list(DEFAULT_MEDIA_DIR.glob("media_*.jpg"))) < EXPECTED_MEDIA_COUNT:
         generate_sample_media(DEFAULT_MEDIA_DIR)
 
     complaints: list[Complaint] = []
@@ -451,9 +452,8 @@ def generate_synthetic_data() -> (
     # Build ground truth answer key
     ground_truth_data: dict[str, Any] = {
         "metadata": {
-            "seed": RANDOM_SEED,
+            "seed": seed,
             "disclaimer": "synthetic_only_no_real_citizen_data",
-            "generated_at": datetime.now(UTC).isoformat(),
             "total_complaints": len(validated_complaints),
             "open_complaints": open_count,
             "closed_complaints": closed_count,

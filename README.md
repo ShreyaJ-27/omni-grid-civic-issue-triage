@@ -36,12 +36,13 @@ values raise an error without echoing the supplied value.
 - `make install` — install the editable package, development tools, and
   deterministic clustering/media dependencies.
 - `make test` — run pytest.
-- `make lint` — run Ruff over `core/` and `tests/`.
-- `make demo` — run the implemented ingest-and-cluster portion of the triage
-  CLI on `data/synthetic/complaints.geojson`. The JSON report explicitly lists
-  evidence extraction, closure verification, and narrative summarization as
-  unavailable until those pipeline stages are implemented.
-- `make export-demo` — report an error until report export is implemented.
+- `make lint` — run Ruff over `core/`, `tests/`, and `scripts/`.
+- `make demo` — run the CLI's ingestion-and-clustering-only `triage` command on
+  `data/synthetic/complaints.geojson`. Its partial report lists later stages as
+  unavailable because the CLI does not orchestrate the full Python pipeline.
+- `make export-demo` — run the synthetic report exporter in offline/mock mode,
+  including clustering, deterministic closure checks, damage scoring, and
+  structured summaries, then refresh `web/demo/report.json` and its media.
 
 The API dependencies remain optional. The `pipeline` extra is installed by
 `make install` because clustering and the repository's existing tests require
@@ -61,11 +62,13 @@ example:
 py -3.11 -m omnigrid.cli triage data\synthetic\complaints.geojson
 ```
 
-The available implementation validates complaint, evidence, verdict, and
-report contracts, and runs complaint clustering. Media evidence extraction,
-closure verification, report generation, and citation checking are not
-implemented. `triage` therefore emits a partial shared `Report` that explicitly
-lists completed and unavailable stages; it does not fabricate findings. See
+The CLI's `evidence`, `verify`, and `summarize` commands validate existing
+contract JSON; they do not run those stages. The Python library implements
+media evidence extraction, deterministic closure verification, optional vision
+checks, damage scoring, and citation-validated summaries. The `triage` CLI
+currently runs ingestion and clustering only and returns a partial `Report`.
+The synthetic exporter composes the implemented stages for the committed demo;
+it is not a general-purpose CLI pipeline for arbitrary complaint files. See
 `skill/omni-grid/SKILL.md` for agent instructions and
 `docs/skill-smoke-test.md` for installation and the manual live-agent test.
 
@@ -91,3 +94,11 @@ vision-assisted closure verification (`core/omnigrid/verify.py`):
 
 See `docs/llm-and-vision-verification.md` for complete configuration, model
 recommendations, licensing, and timeout/retry details.
+
+## Issues #1-16 Audit
+
+The implementation traceability matrix and verified findings are available in
+[`docs/audit/issues-01-16-matrix.md`](docs/audit/issues-01-16-matrix.md) and
+[`docs/audit/issues-01-16-findings.md`](docs/audit/issues-01-16-findings.md).
+The audit records untested live-agent/model behavior and keeps Issues #17 and
+#18 deferred.

@@ -12,6 +12,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from core.omnigrid.llm import (
+    LLMClient,
+    LLMConfig,
     LLMResponseError,
     LLMTimeoutError,
     get_llm_client,
@@ -184,6 +186,7 @@ def test_cache_hit_and_miss(tmp_path: Path) -> None:
 
     client = MagicMock()
     client.config.vision_model = "test-vision-model"
+    client.vision_cache_identity = "http://test-endpoint/v1/test-vision-model"
     client.compare_images_structured.return_value = ClosureVisionAssessment(
         same_location_likely=True,
         defect_repaired=True,
@@ -200,6 +203,64 @@ def test_cache_hit_and_miss(tmp_path: Path) -> None:
     check2 = check_vision_consistency(img1, img2, llm_client=client, cache=cache)
     assert check2.passed is True
     assert client.compare_images_structured.call_count == 1
+
+
+def test_mock_assessments_use_separate_cache_entries(tmp_path: Path) -> None:
+    img1 = _make_dummy_image(tmp_path / "original.jpg", color="black")
+    img2 = _make_dummy_image(tmp_path / "closure.jpg", color="white")
+    cache = VisionCache(cache_path=tmp_path / "cache.json")
+    client = get_llm_client(mock=True)
+    client.set_mock_response(
+        ClosureVisionAssessment(
+            same_location_likely=True,
+            defect_repaired=True,
+            confidence=0.9,
+        )
+    )
+
+    result = check_vision_consistency(img1, img2, llm_client=client, cache=cache)
+    mock_key = cache.compute_key(
+        img1.read_bytes(),
+        img2.read_bytes(),
+        model_name=client.vision_cache_identity,
+    )
+    live_key = cache.compute_key(
+        img1.read_bytes(),
+        img2.read_bytes(),
+        model_name=client.vision_cache_identity.removeprefix("mock:"),
+    )
+
+    assert result.passed is True
+    assert cache.get(mock_key) is not None
+    assert cache.get(live_key) is None
+
+
+def test_cache_identity_includes_provider_and_mock_mode() -> None:
+    mock_client = LLMClient(
+        config=LLMConfig(
+            base_url="https://provider-a.example/v1",
+            vision_model="vision-model",
+            mock=True,
+        )
+    )
+    other_provider = LLMClient(
+        config=LLMConfig(
+            base_url="https://provider-b.example/v1",
+            vision_model="vision-model",
+            mock=True,
+        )
+    )
+    live_client = LLMClient(
+        config=LLMConfig(
+            base_url="https://provider-a.example/v1",
+            vision_model="vision-model",
+            api_key="test-key",
+            mock=False,
+        )
+    )
+
+    assert mock_client.vision_cache_identity != other_provider.vision_cache_identity
+    assert mock_client.vision_cache_identity != live_client.vision_cache_identity
 
 
 def test_cache_key_order_and_invalidation(tmp_path: Path) -> None:

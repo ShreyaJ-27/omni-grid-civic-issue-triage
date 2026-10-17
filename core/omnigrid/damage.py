@@ -200,14 +200,13 @@ def score_damage_severity(
         logger.warning("Damage severity: cannot read image %s: %s", path, exc)
         return None
 
-    model_name = client.config.vision_model
-    cache_key = score_cache.compute_key(image_bytes, model_name)
+    cache_key = score_cache.compute_key(image_bytes, client.vision_cache_identity)
 
     # Cache hit?
     cached = score_cache.get(cache_key)
     if cached is not None:
         logger.debug("Damage severity cache hit for %s", path.name)
-        if evidence_id and not cached.evidence_id:
+        if evidence_id:
             cached = DamageSeverityScore(
                 score=cached.score,
                 reasoning=cached.reasoning,

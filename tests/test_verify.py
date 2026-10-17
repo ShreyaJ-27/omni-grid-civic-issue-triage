@@ -273,6 +273,30 @@ def test_missing_exif_closure_verdict_is_inconclusive(tmp_path: Path) -> None:
     assert verdict.verdict == "inconclusive"
 
 
+def test_closure_media_outside_media_dir_is_rejected(tmp_path: Path) -> None:
+    from PIL import Image
+
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    outside_image = tmp_path / "outside.jpg"
+    Image.new("RGB", (24, 24), color="blue").save(outside_image, format="JPEG")
+    complaint = {
+        "id": "complaint-outside-media",
+        "status": "closed",
+        "closure": {
+            "closed_at": "2026-10-02T10:00:00Z",
+            "media": [{"path": str(outside_image), "type": "image"}],
+        },
+    }
+
+    verdict = verify_closure(complaint, media_dir=media_dir)
+
+    assert verdict.verdict == "inconclusive"
+    assert verdict.checks[0].name == "evidence_path"
+    assert verdict.checks[0].passed is None
+    assert "outside the configured media directory" in verdict.checks[0].detail
+
+
 # -----------------------------------------------------------------------------
 # 4. Strict Schema Compliance Tests
 # -----------------------------------------------------------------------------
