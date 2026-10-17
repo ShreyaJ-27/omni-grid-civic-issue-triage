@@ -179,7 +179,8 @@ excluded from audit changes.
   and `ModuleNotFoundError: imagehash` during test collection on #25; #22's
   failed run had no failed-job logs available. Later main merge runs #26-#32
   succeeded, including two successful checks on PR #32's merge. The audit
-  branch itself has not yet run in GitHub Actions.
+  commit `695ffbb` also passed GitHub Actions run #35 (Python 3.11 install,
+  lint and tests).
 - **Issue #18:** no FastAPI service, upload endpoint, request-size limit, or
   API integration test was added or evaluated as a feature. This remains
   deferred as requested.
@@ -211,9 +212,11 @@ A new virtual environment was created under the system temporary directory;
 | Local browser smoke test at `http://localhost:8765/` | Report fetch HTTP 200; 500 complaints, 5 hotspots, 100 verdicts; complaint detail showed verification checks and repair evidence. Aborted the report fetch and verified the embedded fallback (6 complaints, 2 hotspots, 2 suspect, 1 verified). At 390 px viewport, document width was 375 px. |
 
 The local exporter used deterministic mock mode; it did not call a model
-service. These are local results, not CI results for this branch. Current
-GitHub `main` evidence is the successful Actions run for merged PR #32
-(run `39008040429`, two successful `quality` checks).
+service. These local results are separate from CI. GitHub Actions run #35 for
+audit commit `695ffbb` passed the `quality` job, including dependency
+installation, lint and tests. Current GitHub `main` evidence is the successful
+Actions run for merged PR #32 (run `39008040429`, two successful `quality`
+checks).
 
 ## Issue #17 limitations to address next
 
