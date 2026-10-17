@@ -73,3 +73,21 @@ On Windows, GNU Make is not included with Python; install it separately or run
 the equivalent Python commands shown above. CI uses the project commands
 directly with Python 3.11 and does not require GNU Make, Ollama, or model
 weights.
+
+## LLM Client & Vision Verification
+
+Omni-Grid provides a provider-agnostic LLM client (`core/omnigrid/llm.py`) and
+vision-assisted closure verification (`core/omnigrid/verify.py`):
+
+- **Provider-agnostic**: Point to local Ollama (`http://localhost:11434/v1`) or any
+  OpenAI-compatible hosted provider with `LLM_BASE_URL` and `LLM_API_KEY`.
+- **Mock mode**: Run deterministically and offline without API keys or models using
+  `LLM_MOCK=true`.
+- **Proof-of-Fix precedence**: A vision-model consistency check evaluates whether
+  a defect is repaired at the matching location, but **never overrides a failed
+  deterministic check** (GPS geofence, duplicate pHash, or timestamp sanity).
+- **Persistent caching**: Vision inference results are hashed and cached in
+  `data/cache/vision_cache.json` to prevent duplicate inference.
+
+See `docs/llm-and-vision-verification.md` for complete configuration, model
+recommendations, licensing, and timeout/retry details.

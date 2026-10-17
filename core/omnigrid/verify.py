@@ -1,12 +1,19 @@
-"""Phase 6: Proof-of-Fix deterministic verification checks and verdict generation."""
+"""Phase 6: Proof-of-Fix deterministic and vision verification checks.
+
+Includes deterministic geofence, duplicate pHash, and timestamp sanity checks,
+integrated with vision-model closure consistency verification.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
+import math
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from core.omnigrid.config import get_settings
 from core.omnigrid.evidence import (
@@ -16,7 +23,21 @@ from core.omnigrid.evidence import (
     extract_exif_timestamp,
     phash_distance,
 )
+from core.omnigrid.llm import (
+    LLMAuthenticationError,
+    LLMClient,
+    LLMConnectionError,
+    LLMError,
+    LLMInvalidRequestError,
+    LLMProviderError,
+    LLMResponseError,
+    LLMTimeoutError,
+    get_llm_client,
+)
 from core.omnigrid.schemas import Check, Complaint, Verdict
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,6 +76,130 @@ _DEFECT_KEYWORDS: dict[str, str] = {
     "culvert": "waterlogging",
 }
 
+VISION_SYSTEM_PROMPT = (
+    "You are an expert civic infrastructure quality auditor. "
+    "You compare an initial complaint defect photo with a submitted closure proof "
+    "photo. Evaluate whether both photos depict the same physical location and "
+    "whether the reported defect appears repaired. Be conservative and objective. "
+    "Respond with valid JSON only."
+)
+
+VISION_PROMPT_TEMPLATE = (
+    "Compare these two civic defect images:\n"
+    "Image 1: Initial complaint defect photo.\n"
+    "Image 2: Submitted closure / repair proof photo.\n\n"
+    "Assess:\n"
+    "1. Does Image 2 plausibly depict the same location as Image 1?\n"
+    "2. Does the defect visible in Image 1 appear to have been repaired in Image 2?\n"
+    "3. Provide your confidence score between 0.0 (uncertain) and 1.0 (certain).\n\n"
+    "Respond ONLY with a JSON object in this format:\n"
+    "{\n"
+    '  "same_location_likely": true/false,\n'
+    '  "defect_repaired": true/false,\n'
+    '  "confidence": 0.0 to 1.0,\n'
+    '  "reasoning": "brief 1-2 sentence explanation"\n'
+    "}"
+)
+
+
+# -----------------------------------------------------------------------------
+# Structured Model for Vision Response
+# -----------------------------------------------------------------------------
+
+
+class ClosureVisionAssessment(BaseModel):
+    """Structured response contract for vision model closure consistency check."""
+
+    same_location_likely: bool
+    defect_repaired: bool
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    reasoning: str | None = None
+
+
+# -----------------------------------------------------------------------------
+# Vision Cache
+# -----------------------------------------------------------------------------
+
+
+class VisionCache:
+    """Persistent, fault-tolerant cache for vision closure assessments."""
+
+    def __init__(self, cache_path: Path | str | None = None) -> None:
+        if cache_path is not None:
+            self.path = Path(cache_path)
+        else:
+            self.path = REPO_ROOT / "data" / "cache" / "vision_cache.json"
+
+    def compute_key(
+        self,
+        original_bytes: bytes,
+        closure_bytes: bytes,
+        model_name: str,
+        prompt_version: str = "v1",
+    ) -> str:
+        """Derive a deterministic cache key from image bytes, model, and prompt.
+
+        Notice: Swapping original_bytes and closure_bytes produces a different key
+        because comparison order (before vs after) is strictly significant.
+        """
+        hasher = hashlib.sha256()
+        hasher.update(prompt_version.encode("utf-8"))
+        hasher.update(b":model:")
+        hasher.update(model_name.encode("utf-8"))
+        hasher.update(b":orig:")
+        hasher.update(original_bytes)
+        hasher.update(b":closure:")
+        hasher.update(closure_bytes)
+        return hasher.hexdigest()
+
+    def get(self, key: str) -> ClosureVisionAssessment | None:
+        """Retrieve a cached assessment. Returns None on cache miss or error."""
+        if not self.path.is_file():
+            return None
+        try:
+            raw = self.path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                return None
+            entry = data.get(key)
+            if entry and isinstance(entry, dict):
+                return ClosureVisionAssessment.model_validate(entry)
+        except Exception as exc:
+            logger.warning("Failed reading vision cache %s: %s", self.path, exc)
+            return None
+        return None
+
+    def set(self, key: str, assessment: ClosureVisionAssessment) -> None:
+        """Persist a valid assessment. Fault-tolerant against I/O errors."""
+        try:
+            data: dict[str, Any] = {}
+            if self.path.is_file():
+                try:
+                    loaded = json.loads(self.path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        data = loaded
+                except Exception:
+                    data = {}
+
+            data[key] = assessment.model_dump()
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Failed writing to vision cache %s: %s", self.path, exc)
+
+    def clear(self) -> None:
+        """Clear cache file if it exists."""
+        try:
+            if self.path.is_file():
+                self.path.unlink()
+        except Exception:
+            pass
+
+
+# -----------------------------------------------------------------------------
+# Path and Property Helpers
+# -----------------------------------------------------------------------------
+
 
 def _get_prop(obj: Any, key: str, default: Any = None) -> Any:
     """Helper to retrieve attributes from either Pydantic models or dicts."""
@@ -87,12 +232,16 @@ def _resolve_media_path(
             full = cand / path
             if full.is_file():
                 return full
-            # Also check by basename in candidate directory
             by_name = cand / path.name
             if by_name.is_file():
                 return by_name
 
     return path
+
+
+# -----------------------------------------------------------------------------
+# Deterministic Checks
+# -----------------------------------------------------------------------------
 
 
 def check_gps_geofence(
@@ -105,7 +254,7 @@ def check_gps_geofence(
     threshold = (
         float(geofence_meters)
         if geofence_meters is not None
-        else get_settings().GEOFENCE_METERS
+        else get_settings().geofence_meters
     )
 
     complaint_lat = _get_prop(complaint, "lat")
@@ -155,7 +304,6 @@ def check_gps_geofence(
             ),
             value=distance,
         )
-
 
     return Check(
         name="gps_geofence",
@@ -354,7 +502,6 @@ def check_category_consistency(
     """Check 4: Verify closure defect metadata aligns with complaint category."""
     category = str(_get_prop(complaint, "category", "")).strip().lower()
 
-    # Determine defect type from argument, known media map, or closure metadata
     detected_defect = defect_type
 
     if not detected_defect and closure_media_path:
@@ -399,13 +546,176 @@ def check_category_consistency(
     )
 
 
+# -----------------------------------------------------------------------------
+# Vision Consistency Check (Issue #11)
+# -----------------------------------------------------------------------------
+
+
+def check_vision_consistency(
+    original_media_path: Path | str,
+    closure_media_path: Path | str,
+    llm_client: LLMClient | None = None,
+    cache: VisionCache | None = None,
+    min_confidence: float = 0.60,
+    base_dir: Path | str | None = None,
+) -> Check:
+    """Check 5: Compare original defect and closure images via vision model."""
+    p_orig = _resolve_media_path(original_media_path, base_dir=base_dir)
+    p_closure = _resolve_media_path(closure_media_path, base_dir=base_dir)
+
+    if not p_orig.is_file():
+        return Check(
+            name="vision_consistency",
+            passed=None,
+            detail=f"Original defect image not found: {Path(original_media_path).name}",
+            value=None,
+        )
+
+    if not p_closure.is_file():
+        return Check(
+            name="vision_consistency",
+            passed=None,
+            detail=f"Closure image not found: {Path(closure_media_path).name}",
+            value=None,
+        )
+
+    try:
+        orig_bytes = p_orig.read_bytes()
+        closure_bytes = p_closure.read_bytes()
+    except OSError as exc:
+        return Check(
+            name="vision_consistency",
+            passed=None,
+            detail=f"Unable to read image evidence: {exc}",
+            value=None,
+        )
+
+    client = llm_client if llm_client is not None else get_llm_client()
+    vision_cache = cache if cache is not None else VisionCache()
+
+    cache_key = vision_cache.compute_key(
+        orig_bytes,
+        closure_bytes,
+        model_name=client.config.vision_model,
+    )
+
+    assessment = vision_cache.get(cache_key)
+
+    if assessment is None:
+        try:
+            assessment = client.compare_images_structured(
+                image1=p_orig,
+                image2=p_closure,
+                prompt=VISION_PROMPT_TEMPLATE,
+                response_model=ClosureVisionAssessment,
+                system_prompt=VISION_SYSTEM_PROMPT,
+            )
+        except (
+            LLMTimeoutError,
+            LLMConnectionError,
+            LLMProviderError,
+            LLMAuthenticationError,
+            LLMInvalidRequestError,
+        ) as exc:
+            return Check(
+                name="vision_consistency",
+                passed=None,
+                detail=f"Vision check unavailable ({type(exc).__name__}): {exc}",
+                value=None,
+            )
+        except LLMResponseError as exc:
+            return Check(
+                name="vision_consistency",
+                passed=None,
+                detail=f"Vision model response invalid: {exc}",
+                value=None,
+            )
+        except LLMError as exc:
+            return Check(
+                name="vision_consistency",
+                passed=None,
+                detail=f"Vision model check failed: {exc}",
+                value=None,
+            )
+        except Exception as exc:
+            return Check(
+                name="vision_consistency",
+                passed=None,
+                detail=f"Vision check encountered an unexpected error: {exc}",
+                value=None,
+            )
+
+        # Cache only valid assessments
+        vision_cache.set(cache_key, assessment)
+
+    conf = assessment.confidence
+    if not math.isfinite(conf) or conf < 0.0 or conf > 1.0:
+        return Check(
+            name="vision_consistency",
+            passed=None,
+            detail=f"Invalid confidence value {conf}; check inconclusive.",
+            value=None,
+        )
+
+    if conf < min_confidence:
+        return Check(
+            name="vision_consistency",
+            passed=None,
+            detail=(
+                f"Vision model assessment inconclusive due to low confidence "
+                f"({conf:.2f} < {min_confidence:.2f})."
+            ),
+            value=float(conf),
+        )
+
+    if not assessment.same_location_likely:
+        return Check(
+            name="vision_consistency",
+            passed=False,
+            detail=(
+                f"Closure photo is unlikely to depict the same location as original "
+                f"complaint (confidence: {conf:.2f}). Needs human review."
+            ),
+            value=float(conf),
+        )
+
+    if not assessment.defect_repaired:
+        return Check(
+            name="vision_consistency",
+            passed=False,
+            detail=(
+                f"Vision model indicates reported defect was not repaired in closure "
+                f"evidence (confidence: {conf:.2f}). Needs human review."
+            ),
+            value=float(conf),
+        )
+
+    return Check(
+        name="vision_consistency",
+        passed=True,
+        detail=(
+            f"Vision model confirms defect repaired at matching location "
+            f"(confidence: {conf:.2f})."
+        ),
+        value=float(conf),
+    )
+
+
+# -----------------------------------------------------------------------------
+# Proof-of-Fix Verdict Generation
+# -----------------------------------------------------------------------------
+
+
 def verify_closure(
     complaint: Complaint | dict[str, Any],
     all_complaints: Sequence[Complaint | dict[str, Any]] | None = None,
     media_dir: Path | str | None = None,
     geofence_meters: float | None = None,
+    llm_client: LLMClient | None = None,
+    use_vision: bool = False,
+    cache: VisionCache | None = None,
 ) -> Verdict:
-    """Run all deterministic Proof-of-Fix checks on a closed complaint."""
+    """Run deterministic and optional vision Proof-of-Fix checks on a complaint."""
     cid = _get_prop(complaint, "id", "unknown")
     status = _get_prop(complaint, "status", "")
 
@@ -462,7 +772,7 @@ def verify_closure(
     mpath = _get_prop(primary_media, "path", "")
     resolved_path = _resolve_media_path(mpath, base_dir=media_dir)
 
-    # Execute all 4 deterministic checks
+    # Execute deterministic checks
     c_geo = check_gps_geofence(
         complaint,
         resolved_path,
@@ -483,22 +793,49 @@ def verify_closure(
         closure_media_path=resolved_path,
     )
 
-    checks = [c_geo, c_dup, c_time, c_cat]
+    deterministic_checks = [c_geo, c_dup, c_time, c_cat]
+    checks = list(deterministic_checks)
 
-    # Deterministic verdict rule:
+    # Execute vision check if requested
+    if use_vision:
+        init_media = _get_prop(complaint, "media", [])
+        orig_path = None
+        for m in init_media:
+            p = _get_prop(m, "path")
+            if p:
+                orig_path = p
+                break
+
+        if orig_path:
+            c_vis = check_vision_consistency(
+                orig_path,
+                resolved_path,
+                llm_client=llm_client,
+                cache=cache,
+                base_dir=media_dir,
+            )
+        else:
+            c_vis = Check(
+                name="vision_consistency",
+                passed=None,
+                detail="Complaint lacks initial defect media for vision comparison.",
+                value=None,
+            )
+        checks.append(c_vis)
+
+    # Deterministic checks take strict precedence:
     # Any check failed -> "suspect" immediately
     failed = [c for c in checks if c.passed is False]
     passed = [c for c in checks if c.passed is True]
 
     if failed:
         verdict = "suspect"
-        # Confidence reflects how definitive the failed evidence is
         conf = round(min(1.0, 0.80 + 0.20 * (len(failed) / len(checks))), 2)
     elif all(c.passed is True for c in checks):
         verdict = "verified"
         conf = round(len(passed) / len(checks), 2)
     else:
-        # Insufficient evidence / missing GPS or timestamps without failures
+        # Missing data, low confidence, or inconclusive check without explicit failure
         verdict = "inconclusive"
         conf = round(len(passed) / len(checks), 2)
 
@@ -514,6 +851,9 @@ def verify_closed_complaints(
     geojson_path_or_dict: Path | str | dict[str, Any] | Sequence[Any],
     media_dir: Path | str | None = None,
     geofence_meters: float | None = None,
+    llm_client: LLMClient | None = None,
+    use_vision: bool = False,
+    cache: VisionCache | None = None,
 ) -> list[Verdict]:
     """Batch verify all closed complaints within a dataset."""
     complaints: list[Any] = []
@@ -534,7 +874,6 @@ def verify_closed_complaints(
     elif isinstance(geojson_path_or_dict, (list, tuple)):
         complaints = list(geojson_path_or_dict)
 
-    # Filter closed complaints
     closed = [c for c in complaints if _get_prop(c, "status") == "closed"]
 
     verdicts: list[Verdict] = []
@@ -544,6 +883,9 @@ def verify_closed_complaints(
             all_complaints=complaints,
             media_dir=media_dir,
             geofence_meters=geofence_meters,
+            llm_client=llm_client,
+            use_vision=use_vision,
+            cache=cache,
         )
         verdicts.append(v)
 
