@@ -9,6 +9,7 @@ description = "Shared tools for synthetic civic-issue triage development."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "openai>=1.0.0",
     "pydantic>=2,<3",
     "python-dotenv>=1,<2",
 ]
