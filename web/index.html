@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Omni-Grid: Verifiable Civic Issue Triage</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌐</text></svg>">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="" />
+        
+  <!-- Application CSS -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="header-container">
+      <div class="logo-group">
+        <span class="logo-badge">OMNI-GRID</span>
+        <h1>Civic Issue Triage & Proof-of-Fix Verification</h1>
+      </div>
+      <div class="header-stats">
+        <div class="stat-item">
+          <span class="stat-label">Complaints</span>
+          <span class="stat-value" id="stat-total-complaints">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Hotspots</span>
+          <span class="stat-value" id="stat-total-hotspots">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Suspect Closures</span>
+          <span class="stat-value suspect" id="stat-suspect-closures">—</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Verified Closures</span>
+          <span class="stat-value verified" id="stat-verified-closures">—</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Fallback / Error Alert Banner -->
+  <div id="banner-notice" role="alert">
+    <span>Notice: Loaded embedded fallback sample data.</span>
+  </div>
+
+  <!-- Main Split Layout -->
+  <main>
+    <!-- Left Column: Interactive Map -->
+    <section class="map-column" aria-label="Interactive Map View">
+      <div class="map-controls-bar">
+        <div class="filter-group">
+          <label for="filter-status">Status:</label>
+          <select id="filter-status">
+            <option value="all">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+          </select>
+
+          <label for="filter-category">Category:</label>
+          <select id="filter-category">
+            <option value="all">All Categories</option>
+            <option value="pothole">Pothole</option>
+            <option value="waterlogging">Waterlogging</option>
+            <option value="streetlight">Streetlight</option>
+            <option value="other">Other</option>
+          </select>
+
+          <label for="filter-verdict">Verdict:</label>
+          <select id="filter-verdict">
+            <option value="all">All Verdicts</option>
+            <option value="verified">Verified Genuine</option>
+            <option value="suspect">Suspect Flagged</option>
+            <option value="inconclusive">Inconclusive</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <input type="text" id="search-input" placeholder="Search ID or description..." aria-label="Search complaints">
+          <button type="button" id="btn-reset-filters" class="tab-btn" style="padding: 0.35rem 0.6rem; border: 1px solid var(--border); font-size: 0.8rem;">Reset</button>
+
+          <label style="margin-left: 0.5rem; display: flex; align-items: center; gap: 0.25rem;">
+            <input type="checkbox" id="toggle-hotspots" checked> Hotspots
+          </label>
+          <label style="margin-left: 0.25rem; display: flex; align-items: center; gap: 0.25rem;">
+            <input type="checkbox" id="toggle-complaints" checked> Pins
+          </label>
+        </div>
+      </div>
+
+      <div id="map" role="region" aria-label="Geographic Leaflet Map"></div>
+    </section>
+
+    <!-- Right Column: Navigation Tabs & Detail Panels -->
+    <section class="panels-column" aria-label="Triage Data Panels">
+      <nav class="tabs-nav" aria-label="Panel Navigation">
+        <button class="tab-btn active" data-tab="tab-claims">Summary Claims</button>
+        <button class="tab-btn" data-tab="tab-hotspots">Hotspots</button>
+        <button class="tab-btn" data-tab="tab-complaints">Complaints</button>
+        <button class="tab-btn" data-tab="tab-inspection">Inspection & Checks</button>
+      </nav>
+
+      <!-- Tab 1: Validated Summary Claims -->
+      <div id="tab-claims" class="tab-content active" role="tabpanel">
+        <div id="claims-list-container">
+          <div class="state-message">
+            <div class="state-spinner"></div>
+            Loading summary claims...
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Hotspot Clusters -->
+      <div id="tab-hotspots" class="tab-content" role="tabpanel">
+        <div id="hotspots-list-container">
+          <div class="state-message">
+            <div class="state-spinner"></div>
+            Loading hotspots...
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Filtered Complaints List -->
+      <div id="tab-complaints" class="tab-content" role="tabpanel">
+        <div id="complaints-list-container">
+          <div class="state-message">
+            <div class="state-spinner"></div>
+            Loading complaints...
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Inspection & Repair Checks Drawer -->
+      <div id="tab-inspection" class="tab-content" role="tabpanel">
+        <div id="inspection-detail-container">
+          <div class="state-message">
+            Select a complaint on the map or from the Complaints tab to view its verification checks, EXIF GPS distance, and photo evidence.
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
+          
+  <!-- Application Entry Point -->
+  <script src="js/app.js"></script>
+</body>
+</html>

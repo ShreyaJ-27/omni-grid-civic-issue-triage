@@ -124,3 +124,4 @@ class Report(BaseModel):
     verdicts: list[Verdict]
     claims: list[Claim]
     stats: dict
+    complaints: list[Complaint] = Field(default_factory=list)
