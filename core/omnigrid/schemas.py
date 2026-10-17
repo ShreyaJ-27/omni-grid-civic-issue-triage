@@ -45,7 +45,7 @@ class EvidenceMeta(BaseModel):
         """Check if distance is within the runtime geofence threshold."""
         if self.distance_m is None:
             return False
-        from core.omnigrid.config import get_settings
+        from .config import get_settings
 
         return self.distance_m <= get_settings().GEOFENCE_METERS
 

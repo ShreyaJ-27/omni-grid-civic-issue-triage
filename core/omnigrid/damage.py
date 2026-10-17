@@ -22,8 +22,9 @@ import math
 from pathlib import Path
 from typing import Annotated, Any
 
-from core.omnigrid.llm import LLMClient, LLMError, get_llm_client
 from pydantic import BaseModel, Field, field_validator
+
+from .llm import LLMClient, LLMError, get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +315,7 @@ def compute_severity_score_with_damage(
     Returns:
         Composite severity float in [0.0, 10.0].
     """
-    from core.omnigrid.cluster import compute_severity_score
+    from .cluster import compute_severity_score
 
     if not damage_scores:
         return compute_severity_score(complaints, reference_time=reference_time)

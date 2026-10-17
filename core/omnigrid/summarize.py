@@ -13,9 +13,10 @@ import math
 import re
 from typing import Any
 
-from core.omnigrid.llm import LLMClient, LLMError, get_llm_client
-from core.omnigrid.schemas import Claim, Hotspot, Report, Verdict
 from pydantic import BaseModel, Field
+
+from .llm import LLMClient, get_llm_client
+from .schemas import Claim, Hotspot, Report, Verdict
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +254,7 @@ def generate_summary(
     llm_client: LLMClient | None = None,
     extra_facts: dict[str, Any] | None = None,
     mock: bool | None = None,
+    deterministic_fallback: bool = False,
 ) -> tuple[Report, dict[str, Any]]:
     """Generate a structured, citation-validated summary Report.
 
@@ -310,23 +312,11 @@ def generate_summary(
         f"facts: {json.dumps(facts, default=str)}"
     )
 
-    # Try to get LLM claims with one retry
-    fallback_triggered = False
+    # Mock-mode callers can explicitly request templates instead of simulated
+    # model output so reports never imply that inference took place.
+    fallback_triggered = deterministic_fallback
     raw_claims: list[Claim] = []
-    try:
-        response = client.generate_structured(
-            prompt=prompt,
-            response_model=_SummaryResponse,
-            system_prompt=SUMMARY_SYSTEM_PROMPT,
-            temperature=0.0,
-        )
-        raw_claims = response.claims
-    except (LLMError, Exception) as exc:
-        logger.warning(
-            "LLM summary attempt 1 failed (%s: %s); retrying once...",
-            type(exc).__name__,
-            exc,
-        )
+    if not deterministic_fallback:
         try:
             response = client.generate_structured(
                 prompt=prompt,
@@ -335,23 +325,40 @@ def generate_summary(
                 temperature=0.0,
             )
             raw_claims = response.claims
-        except (LLMError, Exception) as exc2:
+        except Exception as exc:
             logger.warning(
-                "LLM summary attempt 2 also failed (%s: %s); using fallback.",
-                type(exc2).__name__,
-                exc2,
+                "LLM summary attempt 1 failed (%s); retrying once.",
+                type(exc).__name__,
             )
-            fallback_triggered = True
+            try:
+                response = client.generate_structured(
+                    prompt=prompt,
+                    response_model=_SummaryResponse,
+                    system_prompt=SUMMARY_SYSTEM_PROMPT,
+                    temperature=0.0,
+                )
+                raw_claims = response.claims
+            except Exception as exc2:
+                logger.warning(
+                    "LLM summary attempt 2 failed (%s); using fallback.",
+                    type(exc2).__name__,
+                )
+                fallback_triggered = True
 
     if fallback_triggered:
         claims = _build_fallback_claims(hotspots, verdicts, facts)
+        reason = (
+            "Mock mode used a deterministic template; no model inference was run."
+            if deterministic_fallback
+            else "Provider failure triggered deterministic fallback."
+        )
         diagnostics: dict[str, Any] = {
             "raw_claim_count": 0,
             "kept_claim_count": len(claims),
             "dropped_claim_count": 0,
             "dropped_bad_citation": 0,
             "dropped_bad_numbers": 0,
-            "rejection_reasons": ["Provider failure triggered deterministic fallback."],
+            "rejection_reasons": [reason],
             "fallback_triggered": True,
         }
         report = Report(

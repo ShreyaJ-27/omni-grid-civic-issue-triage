@@ -24,14 +24,18 @@ SYNTHETIC = REPOSITORY_ROOT / "data" / "synthetic" / "complaints.geojson"
 COMMANDS = ("ingest", "evidence", "cluster", "verify", "summarize", "triage")
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    *args: str,
+    cwd: Path = REPOSITORY_ROOT,
+) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
+    environment["LLM_MOCK"] = "true"
     environment["PYTHONPATH"] = str(REPOSITORY_ROOT / "core") + os.pathsep + (
         environment.get("PYTHONPATH", "")
     )
     return subprocess.run(
         [sys.executable, "-m", "omnigrid.cli", *args],
-        cwd=REPOSITORY_ROOT,
+        cwd=cwd,
         env=environment,
         capture_output=True,
         text=True,
@@ -102,15 +106,37 @@ def test_cluster_returns_shared_hotspot_records() -> None:
     assert all(Hotspot.model_validate(item) for item in hotspots)
 
 
-def test_triage_returns_explicit_partial_shared_report() -> None:
+def test_triage_returns_complete_shared_report() -> None:
     result = run_cli("triage", str(SYNTHETIC))
 
     assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
     report = Report.model_validate_json(result.stdout)
-    assert report.stats["stages_completed"] == ["ingest", "cluster"]
-    assert report.stats["stages_unavailable"] == ["evidence", "verify", "summarize"]
-    assert report.verdicts == []
-    assert report.claims == []
+    assert len(report.complaints) == 500
+    assert len(report.hotspots) == 5
+    assert len(report.verdicts) == 100
+    assert report.claims
+    assert report.stats["stages_completed"] == [
+        "ingest",
+        "evidence",
+        "cluster",
+        "verification",
+        "summarize",
+        "report_validation",
+    ]
+    assert report.stats["stages_skipped"] == ["damage_scoring", "vision"]
+    assert report.stats["model_mode"] == "mock"
+    assert report.stats["model_inference_used"] is False
+
+
+def test_triage_works_from_another_working_directory(tmp_path: Path) -> None:
+    result = run_cli("triage", str(SYNTHETIC), cwd=tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    report = Report.model_validate_json(result.stdout)
+    assert len(report.complaints) == 500
+    assert len(report.hotspots) == 5
+    assert report.stats["stage_status"]["report"] == "validated"
 
 
 @pytest.mark.parametrize(

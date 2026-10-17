@@ -29,12 +29,7 @@
         "pothole": 4,
         "streetlight": 1
       },
-      "severity": 8.18,
-      "category_counts": {
-        "waterlogging": 10,
-        "pothole": 4,
-        "streetlight": 1
-      }
+      "severity": 5.48
     },
     {
       "id": "hotspot-13.0353-77.5970",
@@ -65,13 +60,7 @@
         "waterlogging": 2,
         "other": 1
       },
-      "severity": 8.28,
-      "category_counts": {
-        "pothole": 9,
-        "streetlight": 2,
-        "waterlogging": 2,
-        "other": 1
-      }
+      "severity": 5.58
     },
     {
       "id": "hotspot-12.9173-77.6229",
@@ -101,12 +90,7 @@
         "waterlogging": 2,
         "other": 1
       },
-      "severity": 8.04,
-      "category_counts": {
-        "pothole": 11,
-        "waterlogging": 2,
-        "other": 1
-      }
+      "severity": 5.34
     },
     {
       "id": "hotspot-12.9785-77.6407",
@@ -135,12 +119,7 @@
         "other": 2,
         "pothole": 1
       },
-      "severity": 7.92,
-      "category_counts": {
-        "streetlight": 10,
-        "other": 2,
-        "pothole": 1
-      }
+      "severity": 5.22
     },
     {
       "id": "hotspot-12.9304-77.5833",
@@ -167,11 +146,7 @@
         "other": 9,
         "pothole": 3
       },
-      "severity": 7.97,
-      "category_counts": {
-        "other": 9,
-        "pothole": 3
-      }
+      "severity": 5.27
     }
   ],
   "verdicts": [
@@ -1666,7 +1641,7 @@
       "cites": []
     },
     {
-      "text": "The highest-severity hotspot (hotspot-13.0353-77.5970) has a severity score of 8.28.",
+      "text": "The highest-severity hotspot (hotspot-13.0353-77.5970) has a severity score of 5.58.",
       "cites": [
         "hotspot-13.0353-77.5970"
       ]
@@ -1693,11 +1668,11 @@
       "other": 13
     },
     "hotspot_severities": {
-      "hotspot-12.9609-77.6387": 8.18,
-      "hotspot-13.0353-77.5970": 8.28,
-      "hotspot-12.9173-77.6229": 8.04,
-      "hotspot-12.9785-77.6407": 7.92,
-      "hotspot-12.9304-77.5833": 7.97
+      "hotspot-12.9609-77.6387": 5.48,
+      "hotspot-13.0353-77.5970": 5.58,
+      "hotspot-12.9173-77.6229": 5.34,
+      "hotspot-12.9785-77.6407": 5.22,
+      "hotspot-12.9304-77.5833": 5.27
     },
     "hotspot_complaint_counts": {
       "hotspot-12.9609-77.6387": 15,
@@ -1709,12 +1684,64 @@
     "total_complaints": 500,
     "open_complaints": 400,
     "closed_complaints": 100,
-    "damage_scores_computed": 5,
+    "evidence_count": 15,
+    "damage_scores_computed": 0,
     "claims_kept": 5,
     "claims_dropped": 0,
-    "claims_raw": 0,
     "summary_prompt_version": "v1",
-    "summary_fallback": true
+    "summary_fallback": true,
+    "complaint_count": 500,
+    "hotspot_count": 5,
+    "media_references": 15,
+    "media_references_skipped": 0,
+    "media_skipped_missing": 0,
+    "media_skipped_invalid": 0,
+    "media_skipped_unsafe": 0,
+    "media_evidence_extracted": 15,
+    "evidence_with_gps": 15,
+    "evidence_with_timestamp": 15,
+    "unique_evidence_hashes": 14,
+    "evidence_extraction_failures": 0,
+    "duplicate_evidence_hashes": 1,
+    "damage_score_attempts": 0,
+    "damage_media_skipped": 0,
+    "verdict_counts": {
+      "verified": 5,
+      "suspect": 5,
+      "inconclusive": 90
+    },
+    "vision_checks": 0,
+    "vision_checks_passed": 0,
+    "vision_checks_failed": 0,
+    "vision_checks_inconclusive": 0,
+    "claims_raw": 0,
+    "model_mode": "mock",
+    "model_inference_attempted": false,
+    "model_inference_used": false,
+    "stage_status": {
+      "ingest": "completed",
+      "evidence": "completed",
+      "damage_scoring": "skipped_mock",
+      "cluster": "completed",
+      "verification": "completed",
+      "vision": "skipped_mock",
+      "summary": "template_fallback",
+      "report": "validated"
+    },
+    "stages_completed": [
+      "ingest",
+      "evidence",
+      "cluster",
+      "verification",
+      "summarize",
+      "report_validation"
+    ],
+    "stages_skipped": [
+      "damage_scoring",
+      "vision"
+    ],
+    "exported_media_count": 15,
+    "export_media_references_dropped": 0
   },
   "complaints": [
     {

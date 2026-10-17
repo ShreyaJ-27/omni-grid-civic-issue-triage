@@ -1,6 +1,6 @@
 ---
 name: omni-grid
-description: Use for civic-complaint GeoJSON ingestion, hotspot analysis, evidence extraction and closure checks through the Omni-Grid Python library, validating evidence/verdict/report JSON, or running the available triage and demo-export workflows. Trigger on requests to analyze civic complaints, find geographic clusters, inspect closure evidence, or use the Omni-Grid CLI; explain that validator-only CLI commands do not execute the corresponding pipeline stages.
+description: Use for civic-complaint GeoJSON ingestion, hotspot analysis, evidence extraction and closure checks through the Omni-Grid Python library, validating evidence/verdict/report JSON, or running the complete triage and demo-export workflows. Trigger on requests to analyze civic complaints, find geographic clusters, inspect closure evidence, or use the Omni-Grid CLI; explain that validator-only CLI commands do not execute the corresponding pipeline stages.
 license: MIT
 compatibility: Python 3.11+ with this repository's installed dependencies.
 metadata:
@@ -53,21 +53,22 @@ stderr and exit non-zero. The CLI validates input with the shared contracts in
 | `cluster INPUT [options]` | Ingest complaints and run the implemented DBSCAN/haversine clustering and explainable severity scoring. | Array of `Hotspot` |
 | `verify INPUT` | Validate existing verdict records only. It does **not** evaluate closure evidence. | Array of `Verdict` |
 | `summarize INPUT` | Validate an existing report only. It does **not** generate narrative claims. | `Report` object |
-| `triage INPUT [options]` | Run ingestion and clustering only. It returns a partial report and names unavailable stages in `stats`. | Partial `Report` object |
+| `triage INPUT [options]` | Run ingestion, evidence extraction, clustering, closure verification, and citation-validated summary generation. | Complete `Report` object |
 
 `cluster` and `triage` accept `--eps-meters`, `--min-samples`, and
 `--reference-time` (timezone-aware ISO-8601). The default cluster settings come
-from the existing configuration. Use `--help` on the command or a subcommand
-for the full usage.
+from the existing configuration. `triage` also accepts `--media-root` to
+confine evidence access and `--no-vision` to skip provider vision checks. Use
+`--help` on the command or a subcommand for the full usage.
 
 The Python library implements evidence extraction, deterministic proof-of-fix
-checks, optional vision checks, damage scoring, summary generation, and
+checks, optional live vision and damage scoring, summary generation, and
 citation validation. The validator-only CLI commands do not execute those
-operations. `triage` intentionally returns a partial report with empty
-`verdicts` and `claims`. For the integrated committed synthetic demo, run
-`python scripts/export_demo_report.py`; it uses mock mode by default and writes
-the report and media consumed by the web page. This exporter is not a general
-pipeline command for arbitrary input paths.
+operations. In `LLM_MOCK=true` mode, live inference is skipped and the report
+uses a clearly-marked deterministic template fallback; mocked output is never
+reported as real model inference. For the committed synthetic demo, run
+`python scripts/export_demo_report.py` or `make export-demo`; both use the
+canonical pipeline and export only referenced media.
 
 ## Workflow
 
@@ -77,8 +78,9 @@ pipeline command for arbitrary input paths.
    unclear.
 3. Run the wrapper or CLI command with an argument list, keeping stdout as
    JSON. Do not parse stderr as a result.
-4. For hotspot analysis, use `cluster` or `triage`. Report that the current
-   triage result covers ingestion and clustering only.
+4. For hotspot analysis, use `cluster` for hotspots only or `triage` for the
+   complete report. Inspect `stats.stage_status` for any skipped or fallback
+   stages.
 5. If asked to assess evidence, use the implemented Python evidence and
    verification functions where suitable; do not claim that the `evidence` or
    `verify` validator commands perform extraction or checks.
@@ -102,7 +104,9 @@ py -3.11 -m omnigrid.cli verify data\samples\verdict.json
 py -3.11 -m omnigrid.cli summarize data\samples\report.json
 ```
 
-The three last commands validate existing sample contracts; they do not
+Set `LLM_MOCK=true` in the environment for an offline run with deterministic
+template claims and no model calls. The three last validator commands validate
+existing sample contracts; they do not
 extract evidence, run proof-of-fix checks, or generate a report. The same
 commands can be invoked through `skill/omni-grid/scripts/` wrappers, for
 example:

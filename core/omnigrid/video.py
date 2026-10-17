@@ -23,8 +23,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from core.omnigrid.evidence import extract_evidence_meta
-from core.omnigrid.schemas import VideoKeyframe
+
+from .evidence import extract_evidence_meta
+from .schemas import VideoKeyframe
 
 SUPPORTED_VIDEO_EXTENSIONS: frozenset[str] = frozenset(
     {".mp4", ".mov", ".avi", ".mkv"}

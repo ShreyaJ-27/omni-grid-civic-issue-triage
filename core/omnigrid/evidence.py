@@ -10,9 +10,10 @@ from typing import Any
 
 import imagehash
 import piexif
-from core.omnigrid.config import get_settings
-from core.omnigrid.schemas import Complaint, EvidenceMeta
 from PIL import Image, UnidentifiedImageError
+
+from .config import get_settings
+from .schemas import Complaint, EvidenceMeta
 
 logger = logging.getLogger(__name__)
 
@@ -339,9 +340,14 @@ def extract_complaint_evidence(
     complaint: Complaint | dict[str, Any],
     base_dir: Path | str | None = None,
     keyframe_dir: Path | str | None = None,
+    diagnostics: dict[str, int] | None = None,
 ) -> list[EvidenceMeta]:
     """Extract evidence records for all media in complaint and closure."""
     results: list[EvidenceMeta] = []
+
+    def count(name: str, amount: int = 1) -> None:
+        if diagnostics is not None:
+            diagnostics[name] = diagnostics.get(name, 0) + amount
 
     if isinstance(complaint, Complaint):
         cid = complaint.id
@@ -369,8 +375,11 @@ def extract_complaint_evidence(
     allowed_root = root_dir.resolve()
 
     for item in media_items:
+        count("attempted")
         mpath = item.path if hasattr(item, "path") else item.get("path")
         if not mpath:
+            count("skipped")
+            count("skipped_invalid")
             continue
 
         media_path = Path(mpath)
@@ -380,6 +389,8 @@ def extract_complaint_evidence(
             ).resolve()
             resolved_path.relative_to(allowed_root)
         except (OSError, RuntimeError, ValueError):
+            count("skipped")
+            count("skipped_unsafe")
             logger.warning(
                 "Skipping media evidence outside configured directory: %s",
                 media_path.name,
@@ -388,7 +399,7 @@ def extract_complaint_evidence(
 
         if resolved_path.suffix.lower() in VIDEO_EXTENSIONS:
             try:
-                from core.omnigrid.video import extract_video_keyframes
+                from .video import extract_video_keyframes
 
                 keyframes = extract_video_keyframes(
                     complaint_id=cid,
@@ -398,7 +409,14 @@ def extract_complaint_evidence(
                     raise_on_error=True,
                 )
                 results.extend(kf.evidence_meta for kf in keyframes)
+                count("extracted", len(keyframes))
             except (FileNotFoundError, OSError, ValueError) as exc:
+                count("skipped")
+                count(
+                    "skipped_missing"
+                    if isinstance(exc, (FileNotFoundError, OSError))
+                    else "skipped_invalid"
+                )
                 logger.warning(
                     "Skipping video evidence %s: %s", resolved_path.name, exc
                 )
@@ -412,7 +430,14 @@ def extract_complaint_evidence(
                 complaint_coords=coords,
             )
             results.append(meta)
+            count("extracted")
         except (FileNotFoundError, ValueError) as exc:
+            count("skipped")
+            count(
+                "skipped_missing"
+                if isinstance(exc, FileNotFoundError)
+                else "skipped_invalid"
+            )
             logger.warning("Skipping image evidence %s: %s", resolved_path.name, exc)
             continue
 
