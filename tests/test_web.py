@@ -8,11 +8,12 @@ Verifies:
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
-from core.omnigrid.damage import DamageSeverityCache
 from core.omnigrid.schemas import Complaint, Hotspot, Report, Verdict
-from scripts import export_demo_report
 from scripts.export_demo_report import export_demo
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +45,7 @@ def test_frontend_references_demo_report():
     """Criterion 2: The frontend fetches web/demo/report.json."""
     app_js = APP_JS.read_text(encoding="utf-8")
     assert "demo/report.json" in app_js, "app.js must fetch demo/report.json."
+    assert 'document.createElement("video")' in app_js
 
 
 def test_demo_report_validates_against_shared_schema():
@@ -130,23 +132,14 @@ def test_changing_report_json_modifies_values_without_code_change(tmp_path):
 
 def test_export_script_generates_valid_report_and_media(tmp_path, monkeypatch):
     """Criterion 8 & Export: export_demo produces valid report and copies media."""
+    monkeypatch.chdir(tmp_path)
     out_json = tmp_path / "test_out_report.json"
     out_media = tmp_path / "media"
-    captured: dict[str, object] = {}
-    original_cluster = export_demo_report.cluster_complaints
-    damage_cache = DamageSeverityCache(tmp_path / "damage-cache.json")
-
-    def capture_cluster(complaints, **kwargs):
-        captured.update(kwargs)
-        return original_cluster(complaints, **kwargs)
-
-    monkeypatch.setattr(export_demo_report, "cluster_complaints", capture_cluster)
 
     report = export_demo(
         output_report_path=out_json,
         output_media_dir=out_media,
         use_mock_llm=True,
-        damage_cache=damage_cache,
     )
 
     assert out_json.is_file()
@@ -155,12 +148,15 @@ def test_export_script_generates_valid_report_and_media(tmp_path, monkeypatch):
     assert len(report.verdicts) == 100
     assert len(report.complaints) == 500
     assert report.stats["inconclusive_count"] == 90
-    assert report.stats["damage_scores_computed"] > 0
-    assert captured["damage_scores"]
+    assert report.stats["damage_scores_computed"] == 0
+    assert report.stats["stage_status"]["damage_scoring"] == "skipped_mock"
+    assert report.stats["model_mode"] == "mock"
+    assert report.stats["model_inference_used"] is False
 
-    # Ensure media files were copied
+    # The exporter copies only media referenced in the report.
     copied_media = list(out_media.glob("*.jpg"))
-    assert len(copied_media) == 40
+    assert len(copied_media) == report.stats["exported_media_count"]
+    assert report.stats["exported_media_count"] == 15
 
     exported_report = Report.model_validate_json(out_json.read_text(encoding="utf-8"))
     valid_citations = {
@@ -182,9 +178,46 @@ def test_export_script_generates_valid_report_and_media(tmp_path, monkeypatch):
         output_report_path=second_json,
         output_media_dir=tmp_path / "second_media",
         use_mock_llm=True,
-        damage_cache=damage_cache,
     )
     assert second_json.read_bytes() == out_json.read_bytes()
+
+
+def test_export_script_runs_from_another_working_directory(tmp_path):
+    output_json = tmp_path / "report.json"
+    output_media = tmp_path / "media"
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(REPO_ROOT / "core") + os.pathsep + (
+        environment.get("PYTHONPATH", "")
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "export_demo_report.py"),
+            "--input",
+            str(REPO_ROOT / "data" / "synthetic" / "complaints.geojson"),
+            "--output-report",
+            str(output_json),
+            "--output-media-dir",
+            str(output_media),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    exported = Report.model_validate_json(output_json.read_text(encoding="utf-8"))
+    assert len(exported.hotspots) == 5
+    assert exported.stats["model_mode"] == "mock"
+    for complaint in exported.complaints:
+        media = list(complaint.media)
+        if complaint.closure is not None:
+            media.extend(complaint.closure.media)
+        for item in media:
+            assert (output_media / Path(item.path).name).is_file()
 
 
 # ---------------------------------------------------------------------------

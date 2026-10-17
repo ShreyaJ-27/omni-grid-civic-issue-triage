@@ -15,15 +15,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from core.omnigrid.config import get_settings
-from core.omnigrid.evidence import (
+from pydantic import BaseModel, Field
+
+from .config import get_settings
+from .evidence import (
+    IMAGE_EXTENSIONS,
     compute_distance,
     compute_phash,
     extract_exif_gps,
     extract_exif_timestamp,
     phash_distance,
 )
-from core.omnigrid.llm import (
+from .llm import (
     LLMAuthenticationError,
     LLMClient,
     LLMConnectionError,
@@ -34,8 +37,7 @@ from core.omnigrid.llm import (
     LLMTimeoutError,
     get_llm_client,
 )
-from core.omnigrid.schemas import Check, Complaint, Verdict
-from pydantic import BaseModel, Field
+from .schemas import Check, Complaint, Verdict
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +216,7 @@ def _get_prop(obj: Any, key: str, default: Any = None) -> Any:
 def _resolve_media_path(
     media_path: str | Path,
     base_dir: Path | str | None = None,
+    strict_paths: bool = False,
 ) -> Path:
     """Resolve media path against candidate directories."""
     path = Path(media_path)
@@ -231,6 +234,8 @@ def _resolve_media_path(
         if candidate.is_file():
             return candidate
 
+        if strict_paths:
+            return candidate
         by_name = root / path.name
         if by_name.is_file():
             return by_name
@@ -267,9 +272,15 @@ def check_gps_geofence(
     complaint: Any,
     closure_media_path: Path | str,
     geofence_meters: float | None = None,
+    media_dir: Path | str | None = None,
+    strict_media_paths: bool = False,
 ) -> Check:
     """Check 1: Verify closure photo GPS coordinates are within geofence."""
-    path = _resolve_media_path(closure_media_path)
+    path = _resolve_media_path(
+        closure_media_path,
+        base_dir=media_dir,
+        strict_paths=strict_media_paths,
+    )
     threshold = (
         float(geofence_meters)
         if geofence_meters is not None
@@ -340,10 +351,15 @@ def check_duplicate_evidence(
     closure_media_path: Path | str,
     all_complaints: Sequence[Any] | None = None,
     base_dir: Path | str | None = None,
+    strict_media_paths: bool = False,
 ) -> Check:
     """Check 2: Check for reused or duplicate closure evidence using pHash."""
     try:
-        path = _resolve_media_path(closure_media_path, base_dir=base_dir)
+        path = _resolve_media_path(
+            closure_media_path,
+            base_dir=base_dir,
+            strict_paths=strict_media_paths,
+        )
     except ValueError:
         return Check(
             name="duplicate_evidence",
@@ -377,7 +393,11 @@ def check_duplicate_evidence(
         m_path = _get_prop(m, "path")
         if m_path:
             try:
-                p_init = _resolve_media_path(m_path, base_dir=base_dir)
+                p_init = _resolve_media_path(
+                    m_path,
+                    base_dir=base_dir,
+                    strict_paths=strict_media_paths,
+                )
             except ValueError:
                 logger.warning(
                     "Ignoring initial evidence outside configured media directory."
@@ -424,7 +444,11 @@ def check_duplicate_evidence(
                 om_path = _get_prop(om, "path")
                 if om_path:
                     try:
-                        p_other = _resolve_media_path(om_path, base_dir=base_dir)
+                        p_other = _resolve_media_path(
+                            om_path,
+                            base_dir=base_dir,
+                            strict_paths=strict_media_paths,
+                        )
                     except ValueError:
                         logger.warning(
                             "Ignoring closure evidence outside configured media "
@@ -465,9 +489,15 @@ def check_duplicate_evidence(
 def check_timestamp_sanity(
     complaint: Any,
     closure_media_path: Path | str,
+    media_dir: Path | str | None = None,
+    strict_media_paths: bool = False,
 ) -> Check:
     """Check 3: Verify closure photo capture timestamp is temporally coherent."""
-    path = _resolve_media_path(closure_media_path)
+    path = _resolve_media_path(
+        closure_media_path,
+        base_dir=media_dir,
+        strict_paths=strict_media_paths,
+    )
     if not path.is_file():
         return Check(
             name="timestamp_sanity",
@@ -539,8 +569,17 @@ def check_category_consistency(
     complaint: Any,
     closure_media_path: Path | str | None = None,
     defect_type: str | None = None,
+    evidence_available: bool = True,
 ) -> Check:
     """Check 4: Verify closure defect metadata aligns with complaint category."""
+    if not evidence_available:
+        return Check(
+            name="category_consistency",
+            passed=None,
+            detail="Closure evidence is missing or unreadable; check inconclusive.",
+            value=None,
+        )
+
     category = str(_get_prop(complaint, "category", "")).strip().lower()
 
     detected_defect = defect_type
@@ -599,11 +638,20 @@ def check_vision_consistency(
     cache: VisionCache | None = None,
     min_confidence: float = 0.60,
     base_dir: Path | str | None = None,
+    strict_media_paths: bool = False,
 ) -> Check:
     """Check 5: Compare original defect and closure images via vision model."""
     try:
-        p_orig = _resolve_media_path(original_media_path, base_dir=base_dir)
-        p_closure = _resolve_media_path(closure_media_path, base_dir=base_dir)
+        p_orig = _resolve_media_path(
+            original_media_path,
+            base_dir=base_dir,
+            strict_paths=strict_media_paths,
+        )
+        p_closure = _resolve_media_path(
+            closure_media_path,
+            base_dir=base_dir,
+            strict_paths=strict_media_paths,
+        )
     except ValueError:
         return Check(
             name="vision_consistency",
@@ -763,6 +811,7 @@ def verify_closure(
     llm_client: LLMClient | None = None,
     use_vision: bool = False,
     cache: VisionCache | None = None,
+    strict_media_paths: bool = False,
 ) -> Verdict:
     """Run deterministic and optional vision Proof-of-Fix checks on a complaint."""
     cid = _get_prop(complaint, "id", "unknown")
@@ -821,7 +870,11 @@ def verify_closure(
     mpath = _get_prop(primary_media, "path", "")
     media_root = Path(media_dir) if media_dir is not None else REPO_ROOT
     try:
-        resolved_path = _resolve_media_path(mpath, base_dir=media_root)
+        resolved_path = _resolve_media_path(
+            mpath,
+            base_dir=media_root,
+            strict_paths=strict_media_paths,
+        )
     except ValueError:
         logger.warning(
             "Rejected closure media outside configured media directory for %s.", cid
@@ -843,25 +896,57 @@ def verify_closure(
             confidence=0.20,
         )
 
+    if not resolved_path.is_file():
+        return Verdict(
+            complaint_id=cid,
+            verdict="inconclusive",
+            checks=[
+                Check(
+                    name="evidence_path",
+                    passed=None,
+                    detail=(
+                        "Closure media file is missing; verification is "
+                        "inconclusive."
+                    ),
+                    value=None,
+                )
+            ],
+            confidence=0.20,
+        )
+
+    evidence_available = False
+    if resolved_path.suffix.lower() in IMAGE_EXTENSIONS:
+        try:
+            compute_phash(resolved_path)
+            evidence_available = True
+        except Exception:
+            logger.warning("Closure image is unreadable; verification is inconclusive.")
+
     # Execute deterministic checks
     c_geo = check_gps_geofence(
         complaint,
         resolved_path,
         geofence_meters=geofence_meters,
+        media_dir=media_root,
+        strict_media_paths=strict_media_paths,
     )
     c_dup = check_duplicate_evidence(
         complaint,
         resolved_path,
         all_complaints=all_complaints,
         base_dir=media_root,
+        strict_media_paths=strict_media_paths,
     )
     c_time = check_timestamp_sanity(
         complaint,
         resolved_path,
+        media_dir=media_root,
+        strict_media_paths=strict_media_paths,
     )
     c_cat = check_category_consistency(
         complaint,
         closure_media_path=resolved_path,
+        evidence_available=evidence_available,
     )
 
     deterministic_checks = [c_geo, c_dup, c_time, c_cat]
@@ -877,19 +962,25 @@ def verify_closure(
                 orig_path = p
                 break
 
-        if orig_path:
+        if orig_path and evidence_available:
             c_vis = check_vision_consistency(
                 orig_path,
                 resolved_path,
                 llm_client=llm_client,
                 cache=cache,
                 base_dir=media_root,
+                strict_media_paths=strict_media_paths,
             )
         else:
             c_vis = Check(
                 name="vision_consistency",
                 passed=None,
-                detail="Complaint lacks initial defect media for vision comparison.",
+                detail=(
+                    "Closure evidence cannot be decoded as an image; vision "
+                    "comparison is inconclusive."
+                    if not evidence_available
+                    else "Complaint lacks initial defect media for vision comparison."
+                ),
                 value=None,
             )
         checks.append(c_vis)
@@ -925,6 +1016,7 @@ def verify_closed_complaints(
     llm_client: LLMClient | None = None,
     use_vision: bool = False,
     cache: VisionCache | None = None,
+    strict_media_paths: bool = False,
 ) -> list[Verdict]:
     """Batch verify all closed complaints within a dataset."""
     complaints: list[Any] = []
@@ -957,6 +1049,7 @@ def verify_closed_complaints(
             llm_client=llm_client,
             use_vision=use_vision,
             cache=cache,
+            strict_media_paths=strict_media_paths,
         )
         verdicts.append(v)
 

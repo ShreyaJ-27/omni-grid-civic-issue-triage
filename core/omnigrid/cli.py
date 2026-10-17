@@ -1,4 +1,4 @@
-"""Command-line interface for validating and running available Omni-Grid stages."""
+"""Command-line interface for validation and the complete Omni-Grid pipeline."""
 
 from __future__ import annotations
 
@@ -8,142 +8,29 @@ import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
+from .ingest import (
+    InputError,
+)
+from .ingest import (
+    load_complaints as _load_complaints,
+)
+from .ingest import (
+    read_json as _read_json,
+)
+from .ingest import (
+    validate_model as _validate_model,
+)
+from .ingest import (
+    validate_records as _validate_records,
+)
 from .schemas import Complaint, EvidenceMeta, Hotspot, Report, Verdict
-
-ModelT = TypeVar("ModelT", bound=BaseModel)
-
-
-class InputError(ValueError):
-    """An expected input or contract validation error."""
 
 
 class MissingDependencyError(RuntimeError):
     """A dependency required by an implemented pipeline stage is unavailable."""
-
-
-def _read_json(path: Path) -> object:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise InputError(f"input file not found: {path}") from exc
-    except IsADirectoryError as exc:
-        raise InputError(f"input path is a directory, not a file: {path}") from exc
-    except UnicodeDecodeError as exc:
-        raise InputError(f"input is not valid UTF-8 JSON: {path}") from exc
-    except json.JSONDecodeError as exc:
-        raise InputError(
-            f"invalid JSON in {path} at line {exc.lineno}, column {exc.colno}: "
-            f"{exc.msg}"
-        ) from exc
-    except OSError as exc:
-        raise InputError(f"cannot read input file {path}: {exc.strerror}") from exc
-
-
-def _validation_details(error: ValidationError) -> str:
-    details = []
-    for item in error.errors(include_input=False, include_context=False):
-        location = ".".join(str(part) for part in item["loc"]) or "input"
-        details.append(f"{location}: {item['msg']}")
-    return "; ".join(details)
-
-
-def _validate_model(model: type[ModelT], data: object, label: str) -> ModelT:
-    try:
-        return model.model_validate(data)
-    except ValidationError as exc:
-        raise InputError(
-            f"{label} does not match {model.__name__}: {_validation_details(exc)}"
-        ) from exc
-
-
-def _validate_records(model: type[ModelT], data: object, label: str) -> list[ModelT]:
-    records = data if isinstance(data, list) else [data]
-    if not records:
-        return []
-
-    validated = []
-    for index, record in enumerate(records):
-        validated.append(_validate_model(model, record, f"{label}[{index}]"))
-    return validated
-
-
-def _feature_properties(feature: object, index: int) -> dict[str, object]:
-    label = f"features[{index}]"
-    if not isinstance(feature, dict) or feature.get("type") != "Feature":
-        raise InputError(f"{label} must be a GeoJSON Feature")
-
-    properties = feature.get("properties")
-    if not isinstance(properties, dict):
-        raise InputError(f"{label}.properties must be an object")
-
-    geometry = feature.get("geometry")
-    if not isinstance(geometry, dict) or geometry.get("type") != "Point":
-        raise InputError(f"{label}.geometry must be a Point")
-
-    coordinates = geometry.get("coordinates")
-    if (
-        not isinstance(coordinates, list)
-        or len(coordinates) < 2
-        or any(
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
-            for value in coordinates[:2]
-        )
-    ):
-        raise InputError(
-            f"{label}.geometry.coordinates must contain numeric longitude "
-            "and latitude"
-        )
-
-    longitude, latitude = coordinates[:2]
-    complaint_data = dict(properties)
-    if "id" not in complaint_data and feature.get("id") is not None:
-        complaint_data["id"] = feature["id"]
-
-    for key, coordinate in (("lat", latitude), ("lon", longitude)):
-        if key not in complaint_data:
-            complaint_data[key] = coordinate
-            continue
-        try:
-            property_coordinate = float(complaint_data[key])
-        except (TypeError, ValueError):
-            continue
-        if not math.isclose(property_coordinate, coordinate, rel_tol=0, abs_tol=1e-9):
-            raise InputError(
-                f"{label}.properties.{key} conflicts with GeoJSON geometry"
-            )
-
-    return complaint_data
-
-
-def _load_complaints(path: Path) -> list[Complaint]:
-    data = _read_json(path)
-    if isinstance(data, dict) and data.get("type") == "FeatureCollection":
-        features = data.get("features")
-        if not isinstance(features, list):
-            raise InputError("GeoJSON FeatureCollection.features must be an array")
-        complaints = []
-        for index, feature in enumerate(features):
-            properties = _feature_properties(feature, index)
-            complaints.append(
-                _validate_model(
-                    Complaint,
-                    properties,
-                    f"features[{index}].properties",
-                )
-            )
-        return complaints
-
-    if isinstance(data, dict) and data.get("type") == "Feature":
-        properties = _feature_properties(data, 0)
-        return [_validate_model(Complaint, properties, "feature.properties")]
-
-    return _validate_records(Complaint, data, "complaints")
 
 
 def _parse_positive_float(value: str) -> float:
@@ -290,14 +177,24 @@ def _build_parser() -> argparse.ArgumentParser:
 
     triage = subparsers.add_parser(
         "triage",
-        help="ingest complaints and run the available clustering stage",
+        help="run the complete complaint triage pipeline",
         description=(
-            "Run ingestion and DBSCAN clustering, returning a partial shared Report. "
-            "Evidence extraction, closure verification, and summarization are not run."
+            "Run ingestion, evidence extraction, DBSCAN clustering, closure "
+            "verification, and citation-validated summary generation."
         ),
     )
     triage.add_argument("input", type=Path, help="path to complaint JSON or GeoJSON")
     _add_cluster_options(triage)
+    triage.add_argument(
+        "--media-root",
+        type=Path,
+        help="allowed root for relative and absolute evidence paths",
+    )
+    triage.add_argument(
+        "--no-vision",
+        action="store_true",
+        help="skip provider vision checks while retaining deterministic verification",
+    )
 
     return parser
 
@@ -314,18 +211,15 @@ def _execute(args: argparse.Namespace) -> object:
     if args.command == "summarize":
         return _validate_model(Report, _read_json(args.input), "report")
     if args.command == "triage":
-        complaints = _load_complaints(args.input)
-        hotspots = _cluster(complaints, args)
-        return Report(
-            hotspots=hotspots,
-            verdicts=[],
-            claims=[],
-            stats={
-                "complaint_count": len(complaints),
-                "hotspot_count": len(hotspots),
-                "stages_completed": ["ingest", "cluster"],
-                "stages_unavailable": ["evidence", "verify", "summarize"],
-            },
+        from .pipeline import run_pipeline
+
+        return run_pipeline(
+            args.input,
+            media_root=args.media_root,
+            eps_meters=args.eps_meters,
+            min_samples=args.min_samples,
+            reference_time=args.reference_time,
+            enable_vision=not args.no_vision,
         )
     raise InputError(f"unsupported command: {args.command}")
 
@@ -338,12 +232,25 @@ def main(argv: list[str] | None = None) -> int:
     except InputError as exc:
         print(f"omnigrid: error: {exc}", file=sys.stderr)
         return 2
-    except MissingDependencyError as exc:
+    except RuntimeError as exc:
         print(f"omnigrid: error: {exc}", file=sys.stderr)
         return 3
     except ValueError as exc:
         print(f"omnigrid: error: {exc}", file=sys.stderr)
         return 2
+    except OSError as exc:
+        detail = exc.strerror or type(exc).__name__
+        print(
+            f"omnigrid: error: filesystem operation failed: {detail}",
+            file=sys.stderr,
+        )
+        return 1
+    except Exception as exc:
+        print(
+            f"omnigrid: unexpected failure ({type(exc).__name__})",
+            file=sys.stderr,
+        )
+        return 1
 
     print(json.dumps(_json_value(result), ensure_ascii=False, indent=2))
     return 0

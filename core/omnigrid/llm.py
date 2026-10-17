@@ -41,7 +41,7 @@ except ImportError:  # pragma: no cover
     PermissionDeniedError = Exception  # type: ignore[assignment, misc]
     RateLimitError = Exception  # type: ignore[assignment, misc]
 
-from core.omnigrid.config import Settings, get_settings
+from .config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 

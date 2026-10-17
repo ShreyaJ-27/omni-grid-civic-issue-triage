@@ -750,15 +750,27 @@ function createMediaThumbnail(caption, mediaObj) {
 
   if (mediaObj && mediaObj.path) {
     const resolvedUrl = resolveMediaPath(mediaObj.path);
-    const img = document.createElement("img");
-    img.src = resolvedUrl;
-    img.alt = caption;
-    img.loading = "lazy";
-    img.onerror = () => {
-      imgBox.replaceChildren();
-      imgBox.appendChild(createElem("div", ["evidence-placeholder"], "Evidence photo unavailable"));
-    };
-    imgBox.appendChild(img);
+    if (mediaObj.type === "video") {
+      const video = document.createElement("video");
+      video.src = resolvedUrl;
+      video.controls = true;
+      video.preload = "metadata";
+      video.onerror = () => {
+        imgBox.replaceChildren();
+        imgBox.appendChild(createElem("div", ["evidence-placeholder"], "Evidence video unavailable"));
+      };
+      imgBox.appendChild(video);
+    } else {
+      const img = document.createElement("img");
+      img.src = resolvedUrl;
+      img.alt = caption;
+      img.loading = "lazy";
+      img.onerror = () => {
+        imgBox.replaceChildren();
+        imgBox.appendChild(createElem("div", ["evidence-placeholder"], "Evidence photo unavailable"));
+      };
+      imgBox.appendChild(img);
+    }
   } else {
     imgBox.appendChild(createElem("div", ["evidence-placeholder"], "No photo submitted"));
   }

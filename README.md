@@ -37,12 +37,11 @@ values raise an error without echoing the supplied value.
   deterministic clustering/media dependencies.
 - `make test` — run pytest.
 - `make lint` — run Ruff over `core/`, `tests/`, and `scripts/`.
-- `make demo` — run the CLI's ingestion-and-clustering-only `triage` command on
-  `data/synthetic/complaints.geojson`. Its partial report lists later stages as
-  unavailable because the CLI does not orchestrate the full Python pipeline.
-- `make export-demo` — run the synthetic report exporter in offline/mock mode,
-  including clustering, deterministic closure checks, damage scoring, and
-  structured summaries, then refresh `web/demo/report.json` and its media.
+- `make demo` — run the complete CLI pipeline on
+  `data/synthetic/complaints.geojson`. Set `LLM_MOCK=true` for a deterministic,
+  offline run that uses template claims and does not claim model inference.
+- `make export-demo` — run the same pipeline in offline/mock mode, validate the
+  report, and refresh `web/demo/report.json` plus only its referenced media.
 
 The API dependencies remain optional. The `pipeline` extra is installed by
 `make install` because clustering and the repository's existing tests require
@@ -63,14 +62,14 @@ py -3.11 -m omnigrid.cli triage data\synthetic\complaints.geojson
 ```
 
 The CLI's `evidence`, `verify`, and `summarize` commands validate existing
-contract JSON; they do not run those stages. The Python library implements
-media evidence extraction, deterministic closure verification, optional vision
-checks, damage scoring, and citation-validated summaries. The `triage` CLI
-currently runs ingestion and clustering only and returns a partial `Report`.
-The synthetic exporter composes the implemented stages for the committed demo;
-it is not a general-purpose CLI pipeline for arbitrary complaint files. See
-`skill/omni-grid/SKILL.md` for agent instructions and
-`docs/skill-smoke-test.md` for installation and the manual live-agent test.
+contract JSON; `triage` runs the complete pipeline and returns a schema-valid
+`Report`. Evidence paths are confined to the selected media root. Deterministic
+closure checks always run; vision checks run only for comparable media when
+live inference is enabled. Mock mode skips model calls and uses validated
+template claims. See [`docs/pipeline.md`](docs/pipeline.md) for the API,
+statistics, and offline example, [`skill/omni-grid/SKILL.md`](skill/omni-grid/SKILL.md)
+for agent instructions, and [`docs/skill-smoke-test.md`](docs/skill-smoke-test.md)
+for the manual live-agent test.
 
 On Windows, GNU Make is not included with Python; install it separately or run
 the equivalent Python commands shown above. CI uses the project commands
@@ -100,5 +99,5 @@ recommendations, licensing, and timeout/retry details.
 The implementation traceability matrix and verified findings are available in
 [`docs/audit/issues-01-16-matrix.md`](docs/audit/issues-01-16-matrix.md) and
 [`docs/audit/issues-01-16-findings.md`](docs/audit/issues-01-16-findings.md).
-The audit records untested live-agent/model behavior and keeps Issues #17 and
-#18 deferred.
+The audit records untested live-agent/model behavior. Issue #18 remains
+deferred.
