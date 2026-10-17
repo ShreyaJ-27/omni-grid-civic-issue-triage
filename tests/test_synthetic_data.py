@@ -13,12 +13,10 @@ from core.omnigrid.schemas import Complaint
 from PIL import Image
 from scripts.generate_sample_media import (
     DEFAULT_MEDIA_DIR,
+    EXPECTED_MEDIA_COUNT,
     extract_exif_gps,
-    generate_sample_media,
 )
 from scripts.generate_synthetic import (
-    COMPLAINTS_GEOJSON_PATH,
-    GROUND_TRUTH_JSON_PATH,
     generate_synthetic_data,
     haversine_m,
 )
@@ -28,23 +26,25 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
-def synthetic_files() -> tuple[list[Path], Path, Path]:
-    """Ensure media and synthetic complaints are generated for testing."""
-    media_paths = generate_sample_media(DEFAULT_MEDIA_DIR)
-    complaints, geojson_data, ground_truth_data = generate_synthetic_data()
-
-    with open(COMPLAINTS_GEOJSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(geojson_data, f, indent=2)
-
-    with open(GROUND_TRUTH_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(ground_truth_data, f, indent=2)
-
-    return media_paths, COMPLAINTS_GEOJSON_PATH, GROUND_TRUTH_JSON_PATH
+def synthetic_files(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[list[Path], Path, Path]:
+    """Build JSON fixtures in temporary storage without touching tracked data."""
+    media_paths = sorted(DEFAULT_MEDIA_DIR.glob("media_*.jpg"))
+    _, geojson_data, ground_truth_data = generate_synthetic_data()
+    output_dir = tmp_path_factory.mktemp("synthetic-data")
+    geojson_path = output_dir / "complaints.geojson"
+    ground_truth_path = output_dir / "ground_truth.json"
+    geojson_path.write_text(json.dumps(geojson_data, indent=2), encoding="utf-8")
+    ground_truth_path.write_text(
+        json.dumps(ground_truth_data, indent=2), encoding="utf-8"
+    )
+    return media_paths, geojson_path, ground_truth_path
 
 
 def test_media_count_and_existence(synthetic_files: tuple) -> None:
     media_paths, _, _ = synthetic_files
-    assert len(media_paths) == 15
+    assert len(media_paths) == EXPECTED_MEDIA_COUNT
     for p in media_paths:
         assert p.is_file()
         assert p.stat().st_size > 0
@@ -140,6 +140,7 @@ def test_ground_truth_structure_and_disclaimer(synthetic_files: tuple) -> None:
     assert meta["closed_complaints"] == 100
     assert meta["planted_hotspots_count"] == 5
     assert meta["planted_suspicious_closures_count"] == 5
+    assert "generated_at" not in meta
 
     assert len(gt["hotspots"]) == 5
     assert len(gt["suspicious_closure_ids"]) == 5
@@ -190,6 +191,14 @@ def test_dbscan_recovers_planted_hotspots(synthetic_files: tuple) -> None:
 
     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
     assert n_clusters == 5  # Exactly 5 hotspots recovered
+
+
+def test_generator_is_reproducible_for_a_fixed_seed() -> None:
+    first = generate_synthetic_data(seed=123)
+    second = generate_synthetic_data(seed=123)
+    assert first == second
+    assert first[2]["metadata"]["seed"] == 123
+    assert generate_synthetic_data(seed=124)[1] != first[1]
 
 
 def test_planted_suspicious_closures(synthetic_files: tuple) -> None:

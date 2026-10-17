@@ -68,6 +68,43 @@ def test_valid_damage_score_accepted(tmp_image, tmp_cache):
     assert result.evidence_id == "ev-101"
 
 
+def test_cached_score_uses_requested_evidence_id(tmp_image, tmp_cache):
+    first_client = LLMClient(mock=True)
+    first_client.set_mock_response(
+        DamageSeverityScore(
+            score=0.75,
+            reasoning="Visible defect",
+            evidence_id="first-evidence",
+        )
+    )
+    first = score_damage_severity(
+        tmp_image,
+        evidence_id="first-evidence",
+        llm_client=first_client,
+        cache=tmp_cache,
+    )
+    second = score_damage_severity(
+        tmp_image,
+        evidence_id="second-evidence",
+        llm_client=LLMClient(mock=True),
+        cache=tmp_cache,
+    )
+
+    assert first is not None and second is not None
+    assert second.score == first.score
+    assert second.evidence_id == "second-evidence"
+    mock_key = tmp_cache.compute_key(
+        tmp_image.read_bytes(),
+        first_client.vision_cache_identity,
+    )
+    live_key = tmp_cache.compute_key(
+        tmp_image.read_bytes(),
+        first_client.vision_cache_identity.removeprefix("mock:"),
+    )
+    assert tmp_cache.get(mock_key) is not None
+    assert tmp_cache.get(live_key) is None
+
+
 # ---------------------------------------------------------------------------
 # Acceptance Criterion 2: Out of range, nonnumeric, NaN, infinity rejected
 # ---------------------------------------------------------------------------

@@ -217,6 +217,25 @@ def _resolve_media_path(
 ) -> Path:
     """Resolve media path against candidate directories."""
     path = Path(media_path)
+
+    if base_dir is not None:
+        root = Path(base_dir).resolve()
+        try:
+            candidate = (path if path.is_absolute() else root / path).resolve()
+            candidate.relative_to(root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError(
+                "Media path resolves outside the configured media directory"
+            ) from exc
+
+        if candidate.is_file():
+            return candidate
+
+        by_name = root / path.name
+        if by_name.is_file():
+            return by_name
+        return candidate
+
     if path.is_file():
         return path
 
@@ -323,7 +342,15 @@ def check_duplicate_evidence(
     base_dir: Path | str | None = None,
 ) -> Check:
     """Check 2: Check for reused or duplicate closure evidence using pHash."""
-    path = _resolve_media_path(closure_media_path, base_dir=base_dir)
+    try:
+        path = _resolve_media_path(closure_media_path, base_dir=base_dir)
+    except ValueError:
+        return Check(
+            name="duplicate_evidence",
+            passed=None,
+            detail="Closure media path is outside the configured media directory.",
+            value=None,
+        )
     if not path.is_file():
         return Check(
             name="duplicate_evidence",
@@ -349,7 +376,13 @@ def check_duplicate_evidence(
     for m in init_media:
         m_path = _get_prop(m, "path")
         if m_path:
-            p_init = _resolve_media_path(m_path, base_dir=base_dir)
+            try:
+                p_init = _resolve_media_path(m_path, base_dir=base_dir)
+            except ValueError:
+                logger.warning(
+                    "Ignoring initial evidence outside configured media directory."
+                )
+                continue
             if p_init.is_file():
                 try:
                     init_hash = compute_phash(p_init)
@@ -390,7 +423,15 @@ def check_duplicate_evidence(
             for om in other_media:
                 om_path = _get_prop(om, "path")
                 if om_path:
-                    p_other = _resolve_media_path(om_path, base_dir=base_dir)
+                    try:
+                        p_other = _resolve_media_path(om_path, base_dir=base_dir)
+                    except ValueError:
+                        logger.warning(
+                            "Ignoring closure evidence outside configured media "
+                            "directory for complaint %s.",
+                            other_id,
+                        )
+                        continue
                     if p_other.is_file() and p_other.resolve() != path.resolve():
                         try:
                             o_hash = compute_phash(p_other)
@@ -560,8 +601,16 @@ def check_vision_consistency(
     base_dir: Path | str | None = None,
 ) -> Check:
     """Check 5: Compare original defect and closure images via vision model."""
-    p_orig = _resolve_media_path(original_media_path, base_dir=base_dir)
-    p_closure = _resolve_media_path(closure_media_path, base_dir=base_dir)
+    try:
+        p_orig = _resolve_media_path(original_media_path, base_dir=base_dir)
+        p_closure = _resolve_media_path(closure_media_path, base_dir=base_dir)
+    except ValueError:
+        return Check(
+            name="vision_consistency",
+            passed=None,
+            detail="Media path is outside the configured media directory.",
+            value=None,
+        )
 
     if not p_orig.is_file():
         return Check(
@@ -596,7 +645,7 @@ def check_vision_consistency(
     cache_key = vision_cache.compute_key(
         orig_bytes,
         closure_bytes,
-        model_name=client.config.vision_model,
+        model_name=client.vision_cache_identity,
     )
 
     assessment = vision_cache.get(cache_key)
@@ -770,7 +819,29 @@ def verify_closure(
     # Use first closure media file
     primary_media = media_list[0]
     mpath = _get_prop(primary_media, "path", "")
-    resolved_path = _resolve_media_path(mpath, base_dir=media_dir)
+    media_root = Path(media_dir) if media_dir is not None else REPO_ROOT
+    try:
+        resolved_path = _resolve_media_path(mpath, base_dir=media_root)
+    except ValueError:
+        logger.warning(
+            "Rejected closure media outside configured media directory for %s.", cid
+        )
+        return Verdict(
+            complaint_id=cid,
+            verdict="inconclusive",
+            checks=[
+                Check(
+                    name="evidence_path",
+                    passed=None,
+                    detail=(
+                        "Closure media path is outside the configured media "
+                        "directory."
+                    ),
+                    value=None,
+                )
+            ],
+            confidence=0.20,
+        )
 
     # Execute deterministic checks
     c_geo = check_gps_geofence(
@@ -782,7 +853,7 @@ def verify_closure(
         complaint,
         resolved_path,
         all_complaints=all_complaints,
-        base_dir=media_dir,
+        base_dir=media_root,
     )
     c_time = check_timestamp_sanity(
         complaint,
@@ -812,7 +883,7 @@ def verify_closure(
                 resolved_path,
                 llm_client=llm_client,
                 cache=cache,
-                base_dir=media_dir,
+                base_dir=media_root,
             )
         else:
             c_vis = Check(

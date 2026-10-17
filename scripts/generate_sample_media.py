@@ -1,6 +1,6 @@
 """Generate synthetic civic media images with embedded EXIF GPS tags.
 
-Creates 15 small JPEG images in data/synthetic/media/ for Bengaluru coordinates,
+Creates 40 small JPEG images in data/synthetic/media/ for Bengaluru coordinates,
 including intentional GPS offsets (>5 km) and duplicate evidence files.
 """
 
@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 DEFAULT_MEDIA_DIR = REPO_ROOT / "data" / "synthetic" / "media"
+EXPECTED_MEDIA_COUNT = 40
 
 
 def decimal_to_dms_rational(
@@ -367,9 +368,35 @@ MEDIA_SPECIFICATIONS = [
     },
 ]
 
+# Supplemental images broaden the synthetic sample while keeping each asset
+# deterministic and geographically plausible.
+_SUPPLEMENTAL_ANCHORS = [
+    (12.9172, 77.6228),
+    (12.9784, 77.6408),
+    (12.9609, 77.6387),
+    (12.9304, 77.5833),
+    (13.0354, 77.5970),
+]
+_SUPPLEMENTAL_CATEGORIES = ["pothole", "waterlogging", "streetlight", "other"]
+for _index in range(16, EXPECTED_MEDIA_COUNT + 1):
+    _anchor_lat, _anchor_lon = _SUPPLEMENTAL_ANCHORS[(_index - 16) % 5]
+    _offset = ((_index - 16) // 5 + 1) * 0.00002
+    MEDIA_SPECIFICATIONS.append(
+        {
+            "filename": f"media_{_index:02d}.jpg",
+            "category": _SUPPLEMENTAL_CATEGORIES[(_index - 16) % 4],
+            "label": f"SYNTHETIC-{_index:02d}",
+            "lat": _anchor_lat + _offset,
+            "lon": _anchor_lon + _offset,
+            "is_repair": False,
+            "seed": 100 + _index,
+            "role": "supplemental",
+        }
+    )
+
 
 def generate_sample_media(output_dir: Path | str = DEFAULT_MEDIA_DIR) -> list[Path]:
-    """Generate 15 JPEG images with EXIF GPS tags into output_dir."""
+    """Generate 40 JPEG images with EXIF GPS tags into output_dir."""
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
 

@@ -29,7 +29,12 @@
         "pothole": 4,
         "streetlight": 1
       },
-      "severity": 5.06
+      "severity": 8.18,
+      "category_counts": {
+        "waterlogging": 10,
+        "pothole": 4,
+        "streetlight": 1
+      }
     },
     {
       "id": "hotspot-13.0353-77.5970",
@@ -60,7 +65,13 @@
         "waterlogging": 2,
         "other": 1
       },
-      "severity": 5.17
+      "severity": 8.28,
+      "category_counts": {
+        "pothole": 9,
+        "streetlight": 2,
+        "waterlogging": 2,
+        "other": 1
+      }
     },
     {
       "id": "hotspot-12.9173-77.6229",
@@ -90,7 +101,12 @@
         "waterlogging": 2,
         "other": 1
       },
-      "severity": 4.97
+      "severity": 8.04,
+      "category_counts": {
+        "pothole": 11,
+        "waterlogging": 2,
+        "other": 1
+      }
     },
     {
       "id": "hotspot-12.9785-77.6407",
@@ -119,7 +135,12 @@
         "other": 2,
         "pothole": 1
       },
-      "severity": 4.81
+      "severity": 7.92,
+      "category_counts": {
+        "streetlight": 10,
+        "other": 2,
+        "pothole": 1
+      }
     },
     {
       "id": "hotspot-12.9304-77.5833",
@@ -146,7 +167,11 @@
         "other": 9,
         "pothole": 3
       },
-      "severity": 4.86
+      "severity": 7.97,
+      "category_counts": {
+        "other": 9,
+        "pothole": 3
+      }
     }
   ],
   "verdicts": [
@@ -180,6 +205,19 @@
         }
       ],
       "confidence": 1.0
+    },
+    {
+      "complaint_id": "complaint-002",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
     },
     {
       "complaint_id": "complaint-003",
@@ -242,6 +280,19 @@
         }
       ],
       "confidence": 1.0
+    },
+    {
+      "complaint_id": "complaint-016",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
     },
     {
       "complaint_id": "complaint-017",
@@ -337,6 +388,19 @@
       "confidence": 1.0
     },
     {
+      "complaint_id": "complaint-029",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
       "complaint_id": "complaint-030",
       "verdict": "suspect",
       "checks": [
@@ -399,6 +463,19 @@
       "confidence": 1.0
     },
     {
+      "complaint_id": "complaint-044",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
       "complaint_id": "complaint-045",
       "verdict": "suspect",
       "checks": [
@@ -459,6 +536,1124 @@
         }
       ],
       "confidence": 1.0
+    },
+    {
+      "complaint_id": "complaint-056",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-057",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-088",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-091",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-095",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-108",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-111",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-120",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-121",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-132",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-136",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-139",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-147",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-148",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-151",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-152",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-153",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-161",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-167",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-168",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-171",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-184",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-188",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-190",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-191",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-197",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-208",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-213",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-214",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-220",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-227",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-241",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-255",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-257",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-259",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-261",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-264",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-279",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-283",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-293",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-294",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-296",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-298",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-299",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-305",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-309",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-315",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-317",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-326",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-328",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-331",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-333",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-338",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-339",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-342",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-345",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-352",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-361",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-374",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-378",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-381",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-385",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-388",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-397",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-407",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-415",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-416",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-423",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-433",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-437",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-438",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-447",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-452",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-454",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-459",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-461",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-462",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-463",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-467",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-470",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-472",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-479",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-483",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-487",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-494",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
+    },
+    {
+      "complaint_id": "complaint-496",
+      "verdict": "inconclusive",
+      "checks": [
+        {
+          "name": "evidence_present",
+          "passed": null,
+          "detail": "Closed complaint has no closure evidence media attached.",
+          "value": null
+        }
+      ],
+      "confidence": 0.3
     }
   ],
   "claims": [
@@ -471,7 +1666,7 @@
       "cites": []
     },
     {
-      "text": "The highest-severity hotspot (hotspot-13.0353-77.5970) has a severity score of 5.17.",
+      "text": "The highest-severity hotspot (hotspot-13.0353-77.5970) has a severity score of 8.28.",
       "cites": [
         "hotspot-13.0353-77.5970"
       ]
@@ -487,10 +1682,10 @@
   ],
   "stats": {
     "total_hotspots": 5,
-    "total_verdicts": 10,
+    "total_verdicts": 100,
     "suspect_count": 5,
     "verified_count": 5,
-    "inconclusive_count": 0,
+    "inconclusive_count": 90,
     "category_totals": {
       "waterlogging": 14,
       "pothole": 28,
@@ -498,11 +1693,11 @@
       "other": 13
     },
     "hotspot_severities": {
-      "hotspot-12.9609-77.6387": 5.06,
-      "hotspot-13.0353-77.5970": 5.17,
-      "hotspot-12.9173-77.6229": 4.97,
-      "hotspot-12.9785-77.6407": 4.81,
-      "hotspot-12.9304-77.5833": 4.86
+      "hotspot-12.9609-77.6387": 8.18,
+      "hotspot-13.0353-77.5970": 8.28,
+      "hotspot-12.9173-77.6229": 8.04,
+      "hotspot-12.9785-77.6407": 7.92,
+      "hotspot-12.9304-77.5833": 7.97
     },
     "hotspot_complaint_counts": {
       "hotspot-12.9609-77.6387": 15,

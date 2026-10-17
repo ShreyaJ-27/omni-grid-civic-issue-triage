@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import cv2
@@ -198,20 +199,21 @@ def test_raise_on_error_false_returns_empty_list(tmp_path: Path) -> None:
 def test_bulk_complaint_extraction_with_video(tmp_path: Path) -> None:
     """Bulk complaint processing extracts keyframes from attached videos."""
     vid_path = _generate_synthetic_video(tmp_path / "citizen_fix.mp4")
+    shutil.copy2(MEDIA_DIR / "media_01.jpg", tmp_path / "media_01.jpg")
 
     complaint_dict = {
         "id": "complaint-vid-bulk",
         "lat": 12.9172,
         "lon": 77.6228,
         "media": [
-            {"path": "data/synthetic/media/media_01.jpg", "type": "image"},
+            {"path": "media_01.jpg", "type": "image"},
             {"path": str(vid_path), "type": "video"},
         ],
     }
 
     evidence_records = extract_complaint_evidence(
         complaint_dict,
-        base_dir=REPO_ROOT,
+        base_dir=tmp_path,
         keyframe_dir=tmp_path / "keyframes",
     )
 

@@ -282,6 +282,14 @@ class LLMClient:
                 max_retries=0,  # Handled explicitly by this client
             )
 
+    @property
+    def vision_cache_identity(self) -> str:
+        """Identify the endpoint, model, and mock/live mode for cached scores."""
+        identity = (
+            f"{self.config.base_url.rstrip('/')}/{self.config.vision_model}"
+        )
+        return f"mock:{identity}" if self.config.mock else identity
+
     def set_mock_response(self, response: Any) -> None:
         """Enqueue a mock response for deterministic testing."""
         self._mock_responses.append(response)

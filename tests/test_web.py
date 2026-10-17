@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from core.omnigrid.damage import DamageSeverityCache
 from core.omnigrid.schemas import Complaint, Hotspot, Report, Verdict
+from scripts import export_demo_report
 from scripts.export_demo_report import export_demo
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -126,26 +128,63 @@ def test_changing_report_json_modifies_values_without_code_change(tmp_path):
     assert validated.hotspots[0].severity == 9.2
 
 
-def test_export_script_generates_valid_report_and_media(tmp_path):
+def test_export_script_generates_valid_report_and_media(tmp_path, monkeypatch):
     """Criterion 8 & Export: export_demo produces valid report and copies media."""
     out_json = tmp_path / "test_out_report.json"
     out_media = tmp_path / "media"
+    captured: dict[str, object] = {}
+    original_cluster = export_demo_report.cluster_complaints
+    damage_cache = DamageSeverityCache(tmp_path / "damage-cache.json")
+
+    def capture_cluster(complaints, **kwargs):
+        captured.update(kwargs)
+        return original_cluster(complaints, **kwargs)
+
+    monkeypatch.setattr(export_demo_report, "cluster_complaints", capture_cluster)
 
     report = export_demo(
         output_report_path=out_json,
         output_media_dir=out_media,
         use_mock_llm=True,
+        damage_cache=damage_cache,
     )
 
     assert out_json.is_file()
     assert isinstance(report, Report)
     assert len(report.hotspots) == 5
-    assert len(report.verdicts) == 10
+    assert len(report.verdicts) == 100
     assert len(report.complaints) == 500
+    assert report.stats["inconclusive_count"] == 90
+    assert report.stats["damage_scores_computed"] > 0
+    assert captured["damage_scores"]
 
     # Ensure media files were copied
     copied_media = list(out_media.glob("*.jpg"))
-    assert len(copied_media) > 0
+    assert len(copied_media) == 40
+
+    exported_report = Report.model_validate_json(out_json.read_text(encoding="utf-8"))
+    valid_citations = {
+        *(hotspot.id for hotspot in exported_report.hotspots),
+        *(verdict.complaint_id for verdict in exported_report.verdicts),
+    }
+    for claim in exported_report.claims:
+        assert set(claim.cites) <= valid_citations
+    for complaint in exported_report.complaints:
+        media = list(complaint.media)
+        if complaint.closure:
+            media.extend(complaint.closure.media)
+        for item in media:
+            assert item.path.startswith("demo/media/")
+            assert (out_media / Path(item.path).name).is_file()
+
+    second_json = tmp_path / "second_report.json"
+    export_demo(
+        output_report_path=second_json,
+        output_media_dir=tmp_path / "second_media",
+        use_mock_llm=True,
+        damage_cache=damage_cache,
+    )
+    assert second_json.read_bytes() == out_json.read_bytes()
 
 
 # ---------------------------------------------------------------------------

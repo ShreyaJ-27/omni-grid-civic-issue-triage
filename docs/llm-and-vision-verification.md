@@ -141,9 +141,9 @@ If any deterministic check fails (e.g. GPS coordinates are 20km away), the overa
 To prevent expensive, redundant model inference:
 - Vision comparisons are cached in `data/cache/vision_cache.json` (configurable).
 - The cache key is derived from:
-  $$\text{SHA-256}(\text{prompt\_version} + \text{model\_name} + \text{image1\_bytes} + \text{image2\_bytes})$$
+  $$\text{SHA-256}(\text{prompt\_version} + \text{provider/model identity} + \text{image1\_bytes} + \text{image2\_bytes})$$
 - Swapping image order changes the key, preserving order-dependent comparisons.
-- Altering image bytes, changing the vision model name, or updating the prompt version automatically invalidates the cache key.
+- Altering image bytes, changing the endpoint or vision model, switching between mock and live mode, or updating the prompt version automatically invalidates the cache key.
 - Corrupted cache files or unwriteable storage do not crash verification; the system gracefully falls back to direct inference.
 - Only valid, schema-conforming assessments are cached.
 
@@ -152,4 +152,6 @@ To prevent expensive, redundant model inference:
 ## 10. Privacy and Model Licensing Considerations
 
 - **Privacy**: Prompts contain only task-specific instructions and the relevant defect images. Citizen names, phone numbers, email addresses, or unneeded metadata are strictly excluded from prompts.
+- **Processing location**: The default endpoint is local Ollama, but the client can be configured for a hosted OpenAI-compatible provider. Vision requests transmit selected image bytes, and text requests transmit their prompts and computed facts, to the configured endpoint. Confirm authorization and the provider's retention terms before sending non-synthetic or personally identifying content. Mock mode makes no network requests.
+- **Media paths**: Bulk evidence extraction confines complaint media to `base_dir` (or the current working directory when omitted). Closure verification confines complaint media to `media_dir` (or the repository root when omitted). Traversal paths, symlinks resolving outside that root, and absolute paths outside it are rejected; rejected closure evidence produces an inconclusive verdict. Pass the trusted media directory when processing a dataset outside the repository.
 - **Model Licensing**: When selecting open-weight models, verify their model cards and license agreements (e.g., Apache 2.0 for Qwen2.5, Llama Community License for Llama 3.2). Commercial deployment must ensure compliance with provider terms.

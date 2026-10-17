@@ -260,6 +260,48 @@ def test_nonexistent_file_raises_file_not_found(tmp_path: Path) -> None:
         extract_evidence_meta("c-missing", missing)
 
 
+def test_bulk_evidence_skips_missing_and_malformed_images_with_diagnostics(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    malformed = tmp_path / "corrupt.jpg"
+    malformed.write_bytes(b"not an image")
+    complaint = {
+        "id": "c-1",
+        "lat": 12.9,
+        "lon": 77.6,
+        "media": [
+            {"path": "missing.jpg", "type": "image"},
+            {"path": "corrupt.jpg", "type": "image"},
+        ],
+    }
+
+    result = extract_complaint_evidence(complaint, base_dir=tmp_path)
+
+    assert result == []
+    assert "Skipping image evidence missing.jpg" in caplog.text
+    assert "Skipping image evidence corrupt.jpg" in caplog.text
+
+
+def test_bulk_evidence_rejects_paths_outside_base_dir(tmp_path: Path) -> None:
+    from PIL import Image
+
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    outside_image = tmp_path / "outside.jpg"
+    Image.new("RGB", (24, 24), color="red").save(outside_image, format="JPEG")
+    complaint = {
+        "id": "c-outside",
+        "lat": 12.9,
+        "lon": 77.6,
+        "media": [
+            {"path": "../outside.jpg", "type": "image"},
+            {"path": str(outside_image), "type": "image"},
+        ],
+    }
+
+    assert extract_complaint_evidence(complaint, base_dir=media_dir) == []
+
+
 # -----------------------------------------------------------------------------
 # 6. Schema Compliance & Bulk Ingestion Tests
 # -----------------------------------------------------------------------------
