@@ -32,6 +32,7 @@ outputs/
 *.db
 data/field_photos/*
 !data/field_photos/.gitkeep
+data/cache/
 
 # Editors and OS
 .vscode/

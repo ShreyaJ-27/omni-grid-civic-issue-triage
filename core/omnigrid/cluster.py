@@ -221,6 +221,7 @@ def _extract_vlm_damage_score(item: Any) -> float | None:
 def compute_severity_score(
     complaints: Sequence[Any],
     reference_time: datetime | None = None,
+    damage_scores: dict[str, float] | None = None,
 ) -> float:
     """Compute the composite explainable severity score in [0.0, 10.0].
 
@@ -251,7 +252,19 @@ def compute_severity_score(
     # 2. VLM Damage Score S_vlm with explicit fallback to 0.0
     vlm_scores: list[float] = []
     for c in complaints:
-        v = _extract_vlm_damage_score(c)
+        v: float | None = None
+        cid = _extract_complaint_id(c)
+        if damage_scores is not None and cid in damage_scores:
+            cand = damage_scores[cid]
+            if cand is not None:
+                try:
+                    s = float(cand)
+                    if math.isfinite(s):
+                        v = max(0.0, min(1.0, s))
+                except (ValueError, TypeError):
+                    pass
+        if v is None:
+            v = _extract_vlm_damage_score(c)
         if v is not None:
             vlm_scores.append(v)
 
@@ -308,6 +321,7 @@ def compute_severity_score(
 def compute_severity_breakdown(
     complaints: Sequence[Any],
     reference_time: datetime | None = None,
+    damage_scores: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """Compute component scores and final severity for detailed explainability."""
     n = len(complaints)
@@ -324,9 +338,24 @@ def compute_severity_breakdown(
         0.0, min(1.0, math.log2(1.0 + n) / math.log2(1.0 + COUNT_SATURATION))
     )
 
-    vlm_scores = [
-        v for v in (_extract_vlm_damage_score(c) for c in complaints) if v is not None
-    ]
+    vlm_scores: list[float] = []
+    for c in complaints:
+        v: float | None = None
+        cid = _extract_complaint_id(c)
+        if damage_scores is not None and cid in damage_scores:
+            cand = damage_scores[cid]
+            if cand is not None:
+                try:
+                    s = float(cand)
+                    if math.isfinite(s):
+                        v = max(0.0, min(1.0, s))
+                except (ValueError, TypeError):
+                    pass
+        if v is None:
+            v = _extract_vlm_damage_score(c)
+        if v is not None:
+            vlm_scores.append(v)
+
     s_vlm = max(0.0, min(1.0, float(np.mean(vlm_scores)))) if vlm_scores else 0.0
 
     if reference_time is None:
@@ -387,6 +416,7 @@ def cluster_complaints(
     eps_meters: float | None = None,
     min_samples: int | None = None,
     reference_time: datetime | None = None,
+    damage_scores: dict[str, float] | None = None,
 ) -> list[Hotspot]:
     """Cluster complaints using DBSCAN with haversine metric into explainable Hotspots.
 
@@ -395,6 +425,8 @@ def cluster_complaints(
         eps_meters: Clustering distance radius in meters (defaults to settings).
         min_samples: Minimum complaints to form a hotspot (defaults to settings).
         reference_time: Optional reference datetime for recency decay.
+        damage_scores: Optional mapping of complaint_id -> damage severity
+            score in [0.0, 1.0].
 
     Returns:
         Deterministically sorted list of valid Hotspot schemas.
@@ -473,7 +505,11 @@ def cluster_complaints(
             category_counts[cat] = category_counts.get(cat, 0) + 1
 
         # Severity score
-        severity = compute_severity_score(members, reference_time=reference_time)
+        severity = compute_severity_score(
+            members,
+            reference_time=reference_time,
+            damage_scores=damage_scores,
+        )
 
         # Deterministic unique identifier
         hotspot_id = f"hotspot-{centroid_lat:.4f}-{centroid_lon:.4f}"
