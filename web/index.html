@@ -67,31 +67,31 @@
   <nav class="primary-nav" aria-label="Primary navigation">
     <ul class="nav-tabs" role="tablist">
       <li role="none">
-        <button class="nav-tab active" role="tab" aria-selected="true"
+        <button id="tab-overview" class="nav-tab active" role="tab" aria-selected="true"
                 data-page="overview" aria-controls="page-overview">Overview</button>
       </li>
       <li role="none">
-        <button class="nav-tab" role="tab" aria-selected="false"
+        <button id="tab-citymap" class="nav-tab" role="tab" aria-selected="false"
                 data-page="citymap" aria-controls="page-citymap">City Map</button>
       </li>
       <li role="none">
-        <button class="nav-tab" role="tab" aria-selected="false"
+        <button id="tab-issues" class="nav-tab" role="tab" aria-selected="false"
                 data-page="issues" aria-controls="page-issues">Issues</button>
       </li>
       <li role="none">
-        <button class="nav-tab" role="tab" aria-selected="false"
+        <button id="tab-hotspots" class="nav-tab" role="tab" aria-selected="false"
                 data-page="hotspots" aria-controls="page-hotspots">Hotspots</button>
       </li>
       <li role="none">
-        <button class="nav-tab" role="tab" aria-selected="false"
+        <button id="tab-proofoffix" class="nav-tab" role="tab" aria-selected="false"
                 data-page="proofoffix" aria-controls="page-proofoffix">Proof of Fix</button>
       </li>
       <li role="none">
-        <button class="nav-tab" role="tab" aria-selected="false"
+        <button id="tab-briefings" class="nav-tab" role="tab" aria-selected="false"
                 data-page="briefings" aria-controls="page-briefings">Briefings &amp; Reports</button>
       </li>
     </ul>
-    <button class="nav-tab nav-tab-ingestion" role="tab" aria-selected="false"
+    <button id="tab-ingestion" class="nav-tab nav-tab-ingestion" role="tab" aria-selected="false"
             data-page="ingestion" aria-controls="page-ingestion">Data Ingestion</button>
   </nav>
 
@@ -271,8 +271,10 @@
               </label>
             </div>
 
-            <!-- Map -->
-            <div id="map" role="region" aria-label="Geographic complaint map — Bengaluru"></div>
+            <!-- Map slot in overview -->
+            <div id="map-slot-overview" style="flex:1; display:flex; flex-direction:column; min-height:200px;">
+              <div id="map" role="region" aria-label="Geographic complaint map — Bengaluru"></div>
+            </div>
 
             <!-- Map footer / legend -->
             <div class="map-footer" aria-label="Map legend">
@@ -397,30 +399,13 @@
         <div class="fullpage-map-col">
           <div class="map-column-header">
             <div class="map-title">City Map <span class="map-subtitle">/ Bengaluru — Full View</span></div>
-            <button type="button" class="btn-icon" id="btn-fit-map-full" aria-label="Fit map to data">⊞</button>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span class="map-count-badge" id="map-count-badge-full" aria-live="polite">—</span>
+              <button type="button" class="btn-icon" id="btn-fit-map-full" aria-label="Fit map to data">⊞</button>
+            </div>
           </div>
-          <div class="map-filter-bar" role="search" aria-label="Filter map issues">
-            <select id="filter-status-full" class="filter-select" aria-label="Filter by status (full map)">
-              <option value="all">All statuses</option>
-              <option value="open">Open</option>
-              <option value="closed">Closed</option>
-            </select>
-            <select id="filter-category-full" class="filter-select" aria-label="Filter by category (full map)">
-              <option value="all">All categories</option>
-              <option value="pothole">Pothole</option>
-              <option value="waterlogging">Waterlogging</option>
-              <option value="streetlight">Streetlight</option>
-              <option value="garbage">Garbage</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <!-- Reuses the same map div managed by Leaflet -->
-          <div style="padding: 1rem; color: var(--text-muted); font-size: 0.85rem; flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 0.5rem; text-align: center;">
-            <div>🗺️</div>
-            <strong>City Map</strong>
-            <p style="max-width: 30ch;">The interactive map is in the Overview tab. Switch to Overview to use the live Leaflet map.</p>
-            <button type="button" class="btn btn-primary" data-page="overview">Go to Overview</button>
-          </div>
+          <!-- Live map slot in full view -->
+          <div id="map-slot-citymap" style="flex:1; display:flex; flex-direction:column; min-height:480px;"></div>
         </div>
       </div>
     </div>

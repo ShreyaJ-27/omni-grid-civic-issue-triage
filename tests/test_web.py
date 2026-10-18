@@ -427,3 +427,29 @@ def test_quick_filter_summary_cards_and_map_fit():
     assert "fitMapToBounds" in app_js
     assert "lastSuccessfulReport" in app_js
 
+
+def test_nav_tabs_have_matching_tabpanel_aria_ids():
+    """Tab buttons declare IDs that match the tabpanel aria-labelledby references."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    for tab_id in [
+        "tab-overview",
+        "tab-citymap",
+        "tab-issues",
+        "tab-hotspots",
+        "tab-proofoffix",
+        "tab-briefings",
+        "tab-ingestion",
+    ]:
+        assert f'id="{tab_id}"' in html
+        assert f'aria-labelledby="{tab_id}"' in html
+
+
+def test_app_js_safety_and_edge_case_handling():
+    """Verify speech debounce, auditor timer guards, and coordinate extractors exist."""
+    app_js = APP_JS.read_text(encoding="utf-8")
+    assert "auditTimer" in app_js
+    assert "extractCoords" in app_js
+    assert "applyCsvMappingFromUI" in app_js
+    assert "speechSynth.speaking" in app_js
+
+

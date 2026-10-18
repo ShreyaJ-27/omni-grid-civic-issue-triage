@@ -19,6 +19,7 @@
 const state = {
   report: null,
   lastSuccessfulReport: null,   // preserved across failed requests
+  lastSuccessfulMode: null,     // demo mode of last successful report
   requestInProgress: false,
   lastRequest: null,            // { endpoint, file } for retry
   map: null,
@@ -43,8 +44,10 @@ const state = {
   // Auditor
   selectedScenario: null,
   // Ingestion
-  ingestParsed: null,    // { records, format, warnings }
+  ingestParsed: null,    // { records, rawRows, format, valid, invalid, geojson, notices }
 };
+
+let auditTimer = null;
 
 // ---------------------------------------------------------------------------
 // DOM Helpers
@@ -73,7 +76,7 @@ function showEl(id) { const el = document.getElementById(id); if (el) el.style.d
 function hideEl(id) { const el = document.getElementById(id); if (el) el.style.display = "none"; }
 
 // ---------------------------------------------------------------------------
-// Coordinate Validation
+// Coordinate Validation & Extraction
 // ---------------------------------------------------------------------------
 function isValidCoord(lat, lon) {
   return (
@@ -82,6 +85,15 @@ function isValidCoord(lat, lon) {
     lat >= -90 && lat <= 90 &&
     lon >= -180 && lon <= 180
   );
+}
+
+function extractCoords(r) {
+  if (!r || typeof r !== "object") return null;
+  const latVal = r.lat ?? r.latitude ?? r.Lat ?? r.Latitude;
+  const lonVal = r.lon ?? r.longitude ?? r.Lon ?? r.Longitude ?? r.lng;
+  const lat = typeof latVal === "number" ? latVal : parseFloat(latVal);
+  const lon = typeof lonVal === "number" ? lonVal : parseFloat(lonVal);
+  return isValidCoord(lat, lon) ? { lat, lon } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +118,6 @@ function resolveMediaPath(rawPath) {
 // Night/Light Theme
 // ---------------------------------------------------------------------------
 function initTheme() {
-  // Persist across sessions
   const saved = localStorage.getItem("og-theme");
   if (saved === "night") applyTheme(true);
 
@@ -128,12 +139,13 @@ function applyTheme(night) {
 }
 
 // ---------------------------------------------------------------------------
-// Page Navigation (primary tabs)
+// Page Navigation (primary tabs & all data-page elements)
 // ---------------------------------------------------------------------------
 function initPageNav() {
   document.querySelectorAll("[data-page]").forEach(el => {
     el.addEventListener("click", e => {
-      const page = e.currentTarget.dataset.page;
+      e.preventDefault();
+      const page = el.dataset.page;
       if (page) switchPage(page);
     });
   });
@@ -160,10 +172,33 @@ function switchPage(pageId) {
   const page = document.getElementById(`page-${pageId}`);
   if (page) page.classList.add("active");
 
-  // Invalidate map size on tab switch
-  if (state.map) setTimeout(() => state.map.invalidateSize(), 150);
+  // Move map container to full page view or overview view
+  const mapEl = document.getElementById("map");
+  if (mapEl) {
+    if (pageId === "citymap") {
+      const slot = document.getElementById("map-slot-citymap");
+      if (slot && !slot.contains(mapEl)) {
+        slot.appendChild(mapEl);
+        mapEl.style.height = "520px";
+      }
+    } else if (pageId === "overview") {
+      const slot = document.getElementById("map-slot-overview");
+      if (slot && !slot.contains(mapEl)) {
+        slot.appendChild(mapEl);
+        mapEl.style.height = "";
+      }
+    }
+  }
 
-  // Sync full-page issue list when switching to Issues tab
+  // Invalidate map size on tab switch
+  if (state.map) {
+    setTimeout(() => {
+      state.map.invalidateSize();
+      fitMapToBounds();
+    }, 150);
+  }
+
+  // Sync full-page issue list when switching tabs
   if (pageId === "issues") syncIssuesPageList();
   if (pageId === "hotspots") syncHotspotsPageList();
   if (pageId === "briefings") syncBriefingsPage();
@@ -339,7 +374,9 @@ async function requestReport(endpoint, file, triggerButton = null) {
 
     const report = validateReport(payload);
     loadReport(report);
-    state.lastSuccessfulReport = report;  // preserve on success
+    state.lastSuccessfulReport = report;
+    const modeText = endpoint.includes("synthetic") ? "SYNTHETIC SCENARIOS" : "REAL SAMPLE";
+    state.lastSuccessfulMode = modeText;
 
     if (report.complaints.length === 0) {
       setApiStatus("The API returned a valid Report with no complaints.", "empty");
@@ -351,24 +388,23 @@ async function requestReport(endpoint, file, triggerButton = null) {
         `Report received from the API: ${report.complaints.length} complaints. ${mode}; inspect checks and evidence below.`,
         "success"
       );
-      // Update footer demo mode indicator
-      setText("footer-demo-mode",
-        endpoint.includes("synthetic") ? "SYNTHETIC SCENARIOS" : "REAL SAMPLE"
-      );
+      setText("footer-demo-mode", modeText);
     }
 
   } catch (error) {
-    // Preserve last successful report — do NOT clear it
-    setApiStatus(apiErrorMessage(error), "error");
-    // Only clear the claims loading state if no successful report is available
-    if (!state.lastSuccessfulReport) {
+    const errorMsg = apiErrorMessage(error);
+    if (state.lastSuccessfulReport) {
+      setApiStatus(`${errorMsg} Preserving previously loaded report.`, "error");
+      loadReport(state.lastSuccessfulReport);
+      if (state.lastSuccessfulMode) {
+        setText("footer-demo-mode", state.lastSuccessfulMode);
+      }
+    } else {
+      setApiStatus(errorMsg, "error");
       if (claimsContainer) {
         claimsContainer.replaceChildren(createElem("div", ["state-message"],
           "Request failed. Check the banner above and retry."));
       }
-    } else {
-      // Restore previous report display
-      loadReport(state.lastSuccessfulReport);
     }
 
   } finally {
@@ -449,11 +485,11 @@ function countVerdicts(verdict) {
 
 function updateMapCountBadge() {
   const badge = document.getElementById("map-count-badge");
-  if (!badge) return;
-  const visible = state.report
-    ? getFilteredComplaints().length
-    : 0;
-  badge.textContent = `${visible} on map`;
+  const badgeFull = document.getElementById("map-count-badge-full");
+  const visible = state.report ? getFilteredComplaints().length : 0;
+  const text = `${visible} on map`;
+  if (badge) badge.textContent = text;
+  if (badgeFull) badgeFull.textContent = text;
 }
 
 function updateTabCounts() {
@@ -484,13 +520,11 @@ function initSummaryCards() {
 
 function handleCardFilter(action) {
   if (!state.report) {
-    // No report yet — trigger synthetic demo on total-issues click
     if (action === "all") {
       requestReport("/demo/synthetic", null, document.getElementById("btn-run-demo-synthetic"));
     }
     return;
   }
-  // Clear previous highlight
   document.querySelectorAll(".summary-card").forEach(c => c.classList.remove("active-filter"));
   const card = document.querySelector(`.summary-card[data-filter-action="${action}"]`);
   if (card) card.classList.add("active-filter");
@@ -563,9 +597,7 @@ function resetFilters() {
   const search = document.getElementById("search-input");
   if (search) search.value = "";
 
-  // Clear active-filter highlight from cards
   document.querySelectorAll(".summary-card").forEach(c => c.classList.remove("active-filter"));
-
   applyFilters();
 }
 
@@ -719,7 +751,6 @@ function renderHotspotsList() {
 
     const statsDiv = createElem("div", ["hotspot-stats"]);
     const countStat = createElem("span", []);
-    countStat.textContent = "";
     const countStrong = createElem("strong", [], String((h.complaint_ids || []).length));
     countStat.appendChild(countStrong);
     countStat.appendChild(document.createTextNode(" complaints"));
@@ -768,7 +799,7 @@ function selectHotspot(hotspotId) {
     c.setAttribute("aria-selected", String(active));
   });
 
-  const hotspot = (state.report.hotspots || []).find(h => h.id === hotspotId);
+  const hotspot = (state.report?.hotspots || []).find(h => h.id === hotspotId);
   if (hotspot && Array.isArray(hotspot.complaint_ids)) {
     renderFilteredComplaintsById(new Set(hotspot.complaint_ids));
     switchPanel("panel-issues");
@@ -1059,7 +1090,6 @@ function syncHotspotsPageList() {
       "Hotspot analysis will appear after a dataset is processed."));
     return;
   }
-  // Reuse the hotspot rendering logic but into a different container
   const hotspots = state.report.hotspots || [];
   if (hotspots.length === 0) {
     container.appendChild(createElem("div", ["state-message"], "No geographic hotspots detected."));
@@ -1069,6 +1099,8 @@ function syncHotspotsPageList() {
     const card = createElem("div", ["hotspot-card"]);
     card.setAttribute("tabindex", "0");
     card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Hotspot ${h.id}, severity ${Number(h.severity).toFixed(2)}`);
+
     const header = createElem("div", ["hotspot-header"]);
     header.appendChild(createElem("span", ["hotspot-id"], h.id));
     const sev = createElem("span", ["severity-tag"], `Sev ${Number(h.severity).toFixed(2)}`);
@@ -1077,6 +1109,33 @@ function syncHotspotsPageList() {
     else sev.classList.add("severity-low");
     header.appendChild(sev);
     card.appendChild(header);
+
+    const statsDiv = createElem("div", ["hotspot-stats"]);
+    const countStat = createElem("span", []);
+    const countStrong = createElem("strong", [], String((h.complaint_ids || []).length));
+    countStat.appendChild(countStrong);
+    countStat.appendChild(document.createTextNode(" complaints"));
+    statsDiv.appendChild(countStat);
+    card.appendChild(statsDiv);
+
+    const clickHandler = () => {
+      selectHotspot(h.id);
+      switchPage("overview");
+      switchPanel("panel-hotspots");
+      if (isValidCoord(h.centroid[0], h.centroid[1]) && state.map) {
+        state.map.setView([h.centroid[0], h.centroid[1]], 15);
+        const circle = state.circlesMap.get(h.id);
+        if (circle) circle.openPopup();
+      }
+    };
+    card.addEventListener("click", clickHandler);
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        clickHandler();
+      }
+    });
+
     container.appendChild(card);
   });
 }
@@ -1110,7 +1169,6 @@ function syncProofPage() {
   }
   const complaint = state.complaintsMap.get(state.selectedComplaintId);
   if (!complaint) return;
-  // Render proof content into this container too
   container.replaceChildren();
   const verdict = state.verdictsMap.get(complaint.id);
   if (verdict) {
@@ -1236,7 +1294,7 @@ function renderMapOverlays() {
     bounds.extend([c.lat, c.lon]);
 
     const verdict = state.verdictsMap.get(c.id);
-    let color = "#0284c7";  // open: blue
+    let color = "#0284c7";
     if (c.status === "closed") {
       if (verdict?.verdict === "verified")     color = "#16a34a";
       else if (verdict?.verdict === "suspect") color = "#dc2626";
@@ -1348,7 +1406,7 @@ function toggleSpeech(btn) {
     btn.textContent = "🔇 Speech not available in this browser.";
     return;
   }
-  if (state.isSpeaking) {
+  if (state.isSpeaking || state.speechSynth.speaking) {
     state.speechSynth.cancel();
     state.isSpeaking = false;
     updateSpeechButtons(false);
@@ -1371,6 +1429,11 @@ function toggleSpeech(btn) {
   const utt = new SpeechSynthesisUtterance(text);
   utt.rate  = 0.95;
   utt.pitch = 1.0;
+
+  // Immediately set speaking flag to prevent race conditions on fast repeated clicks
+  state.isSpeaking = true;
+  updateSpeechButtons(true);
+
   utt.onstart = () => { state.isSpeaking = true;  updateSpeechButtons(true); };
   utt.onend   = () => { state.isSpeaking = false; updateSpeechButtons(false); };
   utt.onerror = () => { state.isSpeaking = false; updateSpeechButtons(false); };
@@ -1493,14 +1556,12 @@ function initAuditorModal() {
 
   if (runBtn) runBtn.addEventListener("click", () => runAudit());
 
-  // Close on overlay background click
   if (overlay) {
     overlay.addEventListener("click", e => {
       if (e.target === overlay) closeAuditor();
     });
   }
 
-  // Close on Escape
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && overlay && !overlay.classList.contains("hidden")) closeAuditor();
   });
@@ -1511,22 +1572,28 @@ function openAuditor() {
   const panel   = document.getElementById("auditor-modal-panel");
   if (!overlay) return;
   overlay.classList.remove("hidden");
-  // Focus trap
   if (panel) panel.focus();
   document.body.style.overflow = "hidden";
 }
 
 function closeAuditor() {
+  if (auditTimer) {
+    clearTimeout(auditTimer);
+    auditTimer = null;
+  }
   const overlay = document.getElementById("auditor-modal");
   if (!overlay) return;
   overlay.classList.add("hidden");
   document.body.style.overflow = "";
-  // Return focus
   const openBtn = document.getElementById("btn-open-auditor");
   if (openBtn) openBtn.focus();
 }
 
 function selectScenario(id) {
+  if (auditTimer) {
+    clearTimeout(auditTimer);
+    auditTimer = null;
+  }
   state.selectedScenario = id;
   document.querySelectorAll(".scenario-card").forEach(c => {
     const active = c.dataset.scenario === id;
@@ -1535,10 +1602,12 @@ function selectScenario(id) {
   });
   const runBtn = document.getElementById("btn-run-audit");
   const hint   = document.getElementById("audit-run-hint");
-  if (runBtn) runBtn.disabled = false;
-  if (hint)   hint.textContent = `Ready to run: ${AUDITOR_SCENARIOS[id]?.title || id}`;
+  if (runBtn) {
+    runBtn.disabled = false;
+    runBtn.textContent = "Run Audit Pipeline";
+  }
+  if (hint) hint.textContent = `Ready to run: ${AUDITOR_SCENARIOS[id]?.title || id}`;
 
-  // Hide previous results
   const results = document.getElementById("auditor-results");
   if (results) results.classList.remove("visible");
 }
@@ -1549,12 +1618,21 @@ function runAudit() {
   const scenario = AUDITOR_SCENARIOS[id];
   if (!scenario) return;
 
+  if (auditTimer) {
+    clearTimeout(auditTimer);
+    auditTimer = null;
+  }
+
   const runBtn = document.getElementById("btn-run-audit");
   const hint   = document.getElementById("audit-run-hint");
   if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Running…"; }
 
-  // Simulate a brief processing delay for realism
-  setTimeout(() => {
+  auditTimer = setTimeout(() => {
+    auditTimer = null;
+    if (state.selectedScenario !== id) return;
+    const overlay = document.getElementById("auditor-modal");
+    if (overlay && overlay.classList.contains("hidden")) return;
+
     if (runBtn) { runBtn.disabled = false; runBtn.textContent = "Run Audit Pipeline"; }
     if (hint)   hint.textContent = "Audit complete.";
     renderAuditResults(scenario);
@@ -1565,13 +1643,11 @@ function renderAuditResults(scenario) {
   const results = document.getElementById("auditor-results");
   if (!results) return;
 
-  // Evidence placeholders
   const beforeImg = document.getElementById("auditor-before-img");
   const afterImg  = document.getElementById("auditor-after-img");
   if (beforeImg) beforeImg.textContent = scenario.before;
   if (afterImg)  afterImg.textContent  = scenario.after;
 
-  // Checks table
   const tbody = document.getElementById("auditor-checks-tbody");
   if (tbody) {
     tbody.replaceChildren();
@@ -1590,7 +1666,6 @@ function renderAuditResults(scenario) {
     });
   }
 
-  // Verdict
   const verdictBadge = document.getElementById("auditor-verdict-badge");
   const confidence   = document.getElementById("auditor-confidence");
   if (verdictBadge) {
@@ -1599,7 +1674,6 @@ function renderAuditResults(scenario) {
   }
   if (confidence) confidence.textContent = `Confidence: ${(scenario.confidence * 100).toFixed(0)}%`;
 
-  // Guidance
   const reviewText = document.getElementById("auditor-review-text");
   if (reviewText) reviewText.textContent = ` ${scenario.guidance}`;
 
@@ -1639,7 +1713,7 @@ function initIngestion() {
   if (proceedBtn) {
     proceedBtn.addEventListener("click", () => {
       if (!state.ingestParsed || !state.ingestParsed.geojson) return;
-      // Submit as file upload to /triage
+      if (!state.ingestParsed.valid || state.ingestParsed.valid.length === 0) return;
       const json = JSON.stringify(state.ingestParsed.geojson);
       const blob = new Blob([json], { type: "application/json" });
       const file = new File([blob], "ingested-data.geojson", { type: "application/json" });
@@ -1721,7 +1795,6 @@ function handleIngestionJson(content, filename) {
     geojson = { type: "FeatureCollection", features: [data] };
     notices.push({ type: "info", msg: "Single GeoJSON Point Feature detected." });
   } else if (data && typeof data === "object" && !Array.isArray(data)) {
-    // Possible JSON wrapper
     const keys = Object.keys(data);
     const arrKey = keys.find(k => Array.isArray(data[k]));
     if (arrKey) {
@@ -1735,22 +1808,26 @@ function handleIngestionJson(content, filename) {
     }
   }
 
-  // Validate records
   const { valid, invalid, missingCoords, validationRows } = validateIngestRecords(records);
 
-  // Build GeoJSON for submission if not already
   if (!geojson && valid.length > 0) {
     geojson = {
       type: "FeatureCollection",
-      features: valid.map(r => ({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [r.lon ?? r.longitude ?? 0, r.lat ?? r.latitude ?? 0] },
-        properties: r,
-      })),
+      features: valid.map(r => {
+        const coords = extractCoords(r);
+        return {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [coords ? coords.lon : 0, coords ? coords.lat : 0],
+          },
+          properties: r,
+        };
+      }),
     };
   }
 
-  state.ingestParsed = { records, format, valid, invalid, geojson, notices };
+  state.ingestParsed = { records, rawRows: records, format, valid, invalid, geojson, notices };
   showIngestionPreview(records.length, valid.length, invalid.length, missingCoords, validationRows, notices, "geojson");
 }
 
@@ -1761,43 +1838,33 @@ function handleIngestionCsv(content, filename) {
     return;
   }
 
-  const headers = lines[0].split(",").map(h => h.trim().replace(/^"(.*)"$/, "$1"));
+  const headers = parseCsvLine(lines[0]);
   const rows = lines.slice(1).map(line => {
     const vals = parseCsvLine(line);
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = (vals[i] || "").trim(); });
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
     return obj;
   });
 
-  // Show CSV mapping UI
-  renderCsvMapping(headers, rows);
-
-  const { valid, invalid, missingCoords, validationRows } = validateIngestRecords(rows, headers);
   const notices = [
-    { type: "info", msg: "CSV detected. Review and edit the field mapping below before proceeding." },
-    { type: "warning", msg: "CSV files do not include geographic coordinates unless lat/lon columns are present. Records missing coordinates will be skipped." },
+    { type: "info", msg: "CSV detected. Review and adjust column field mapping below." },
+    { type: "warning", msg: "CSV records without latitude/longitude coordinates will be marked as missing coordinates." },
   ];
 
-  state.ingestParsed = { records: rows, format: "csv", valid, invalid, geojson: null, notices };
-  showIngestionPreview(rows.length, valid.length, invalid.length, missingCoords, validationRows, notices, "csv");
+  state.ingestParsed = { records: rows, rawRows: rows, format: "csv", valid: [], invalid: [], geojson: null, notices };
+  renderCsvMapping(headers, rows);
+  applyCsvMappingFromUI();
 }
 
 function handleIngestionPdf(content, filename) {
   const notices = [
-    { type: "warning", msg: "PDF ingestion is limited to embedded-text tables. Scanned PDFs require OCR which is not available in this browser preview." },
+    { type: "warning", msg: "PDF ingestion is limited to digital tables with embedded text layers. Scanned PDFs require OCR which is not available in this browser interface." },
+    { type: "info", msg: "No complaint records could be automatically parsed from this PDF. Please export the data as CSV or JSON, or use the CLI: omnigrid ingest <file.pdf>" },
   ];
 
-  // Attempt basic text extraction (limited in browser)
-  const notices2 = [
-    ...notices,
-    { type: "info", msg: "No complaint rows could be automatically extracted from this PDF. Please export the data as CSV or JSON for ingestion, or use the CLI: omnigrid ingest <file.pdf>" },
-  ];
+  state.ingestParsed = { records: [], rawRows: [], format: "pdf", valid: [], invalid: [], geojson: null, notices };
+  showIngestionPreview(0, 0, 0, 0, [], notices, "pdf");
 
-  // Show PDF consent + OCR prereqs notice
-  showIngestionPreview(0, 0, 0, 0, [], notices2, "pdf");
-  showEl("pdf-section");
-
-  state.ingestParsed = { records: [], format: "pdf", valid: [], invalid: [], geojson: null, notices: notices2 };
   const proceedBtn = document.getElementById("btn-ingest-proceed");
   if (proceedBtn) proceedBtn.disabled = true;
   const hint = document.getElementById("ingestion-proceed-hint");
@@ -1810,15 +1877,21 @@ function parseCsvLine(line) {
   let cur = "";
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === '"' && (i === 0 || line[i-1] !== "\\")) {
-      inQuote = !inQuote;
+    if (ch === '"') {
+      if (inQuote && i + 1 < line.length && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuote = !inQuote;
+      }
     } else if (ch === "," && !inQuote) {
-      result.push(cur); cur = "";
+      result.push(cur.trim().replace(/^"(.*)"$/, "$1"));
+      cur = "";
     } else {
       cur += ch;
     }
   }
-  result.push(cur);
+  result.push(cur.trim().replace(/^"(.*)"$/, "$1"));
   return result;
 }
 
@@ -1831,6 +1904,25 @@ const OMNI_GRID_FIELDS = [
   { key: "lat",        label: "Latitude",    required: false },
   { key: "lon",        label: "Longitude",   required: false },
 ];
+
+const CSV_FIELD_SYNONYMS = {
+  id: ["id", "complaint_id", "complaintid", "ticket_id", "ticketid", "issue_id"],
+  category: ["category", "type", "issue_type", "defect_type", "defect_class"],
+  status: ["status", "state", "complaint_status"],
+  text: ["text", "description", "details", "complaint_text", "notes", "summary"],
+  created_at: ["created_at", "createdat", "date", "timestamp", "filed_at", "datetime"],
+  lat: ["lat", "latitude", "y"],
+  lon: ["lon", "lng", "longitude", "x"],
+};
+
+function suggestMapping(col) {
+  const clean = col.toLowerCase().replace(/[^a-z0-9_]/g, "");
+  for (const field of OMNI_GRID_FIELDS) {
+    const synonyms = CSV_FIELD_SYNONYMS[field.key] || [field.key];
+    if (synonyms.includes(clean)) return field.key;
+  }
+  return "";
+}
 
 function renderCsvMapping(headers, sampleRows) {
   showEl("csv-mapping-section");
@@ -1846,74 +1938,120 @@ function renderCsvMapping(headers, sampleRows) {
 
     const selTd = createElem("td");
     const sel = document.createElement("select");
+    sel.dataset.col = col;
     sel.setAttribute("aria-label", `Map CSV column "${col}" to Omni-Grid field`);
 
     const blankOpt = createElem("option", [], "— skip —");
     blankOpt.value = "";
     sel.appendChild(blankOpt);
 
+    const suggested = suggestMapping(col);
     OMNI_GRID_FIELDS.forEach(f => {
       const opt = createElem("option", [], `${f.label}${f.required ? " *" : ""}`);
       opt.value = f.key;
-      // Auto-suggest based on name similarity
-      const colLower = col.toLowerCase().replace(/[^a-z]/g, "");
-      const keyLower = f.key.toLowerCase().replace(/[^a-z]/g, "");
-      if (colLower === keyLower || colLower.includes(keyLower) || keyLower.includes(colLower)) {
-        opt.selected = true;
-      }
+      if (suggested === f.key) opt.selected = true;
       sel.appendChild(opt);
     });
 
+    sel.addEventListener("change", () => applyCsvMappingFromUI());
     selTd.appendChild(sel);
     tr.appendChild(selTd);
 
-    const reqField = OMNI_GRID_FIELDS.find(f => {
-      const cL = col.toLowerCase().replace(/[^a-z]/g, "");
-      const kL = f.key.toLowerCase().replace(/[^a-z]/g, "");
-      return cL === kL || cL.includes(kL) || kL.includes(cL);
-    });
+    const reqField = OMNI_GRID_FIELDS.find(f => f.key === suggested);
     tr.appendChild(createElem("td", [], reqField?.required ? "Yes *" : ""));
     tr.appendChild(createElem("td", [], String(sample[col] || "").substring(0, 40)));
     tbody.appendChild(tr);
   });
 }
 
-function validateIngestRecords(records, headers = null) {
+function applyCsvMappingFromUI() {
+  if (!state.ingestParsed || state.ingestParsed.format !== "csv") return;
+  const selects = document.querySelectorAll("#csv-mapping-tbody select[data-col]");
+  const mapping = {};
+  selects.forEach(sel => {
+    const col = sel.dataset.col;
+    const target = sel.value;
+    if (col && target) mapping[col] = target;
+  });
+
+  const rawRows = state.ingestParsed.rawRows || [];
+  const mappedRecords = rawRows.map(row => {
+    const mapped = {};
+    Object.entries(mapping).forEach(([col, target]) => {
+      if (row[col] !== undefined) mapped[target] = row[col];
+    });
+    return mapped;
+  });
+
+  const { valid, invalid, missingCoords, validationRows } = validateIngestRecords(mappedRecords);
+  const geojson = {
+    type: "FeatureCollection",
+    features: valid.map(r => {
+      const coords = extractCoords(r);
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [coords ? coords.lon : 0, coords ? coords.lat : 0],
+        },
+        properties: r,
+      };
+    }),
+  };
+
+  state.ingestParsed.records = mappedRecords;
+  state.ingestParsed.valid = valid;
+  state.ingestParsed.invalid = invalid;
+  state.ingestParsed.geojson = geojson;
+
+  showIngestionPreview(
+    rawRows.length,
+    valid.length,
+    invalid.length,
+    missingCoords,
+    validationRows,
+    state.ingestParsed.notices,
+    "csv",
+    false
+  );
+}
+
+function validateIngestRecords(records) {
   const valid = [];
   const invalid = [];
   let missingCoords = 0;
-  const validationRows = records.slice(0, 20).map((r, i) => {
+  const validationRows = [];
+
+  records.forEach((r, i) => {
     const issues = [];
     if (!r.id && !r.ID && !r.complaint_id) issues.push("Missing ID");
     if (!r.category && !r.Category && !r.type) issues.push("Missing category");
     if (!r.status && !r.Status) issues.push("Missing status");
 
-    const lat = parseFloat(r.lat ?? r.latitude ?? r.Lat ?? r.Latitude);
-    const lon = parseFloat(r.lon ?? r.longitude ?? r.Lon ?? r.Longitude ?? r.lng);
-    const hasCoords = isValidCoord(lat, lon);
-    if (!hasCoords) { issues.push("Missing/invalid coordinates"); missingCoords++; }
+    const coords = extractCoords(r);
+    if (!coords) {
+      issues.push("Missing/invalid coordinates");
+      missingCoords++;
+    }
 
     if (issues.length === 0) {
       valid.push(r);
-      return { row: i + 1, status: "pass", issues: [] };
+      if (i < 20) {
+        validationRows.push({ row: i + 1, status: "pass", issues: [] });
+      }
     } else {
       invalid.push(r);
-      return { row: i + 1, status: issues.includes("Missing/invalid coordinates") ? "warn" : "fail", issues };
+      if (i < 20) {
+        const status = issues.includes("Missing/invalid coordinates") && issues.length === 1 ? "warn" : "fail";
+        validationRows.push({ row: i + 1, status, issues });
+      }
     }
-  });
-
-  // Count remaining
-  records.slice(20).forEach(r => {
-    const lat = parseFloat(r.lat ?? r.latitude ?? r.Lat ?? r.Latitude);
-    const lon = parseFloat(r.lon ?? r.longitude ?? r.Lon ?? r.Longitude ?? r.lng);
-    if (!isValidCoord(lat, lon)) { missingCoords++; invalid.push(r); }
-    else valid.push(r);
   });
 
   return { valid, invalid, missingCoords, validationRows };
 }
 
-function showIngestionPreview(total, validCount, invalidCount, missingCoords, validationRows, notices, format) {
+function showIngestionPreview(total, validCount, invalidCount, missingCoords, validationRows, notices, format, rebuildMapping = true) {
   const section = document.getElementById("ingestion-preview-section");
   if (section) section.style.display = "";
 
@@ -1922,7 +2060,6 @@ function showIngestionPreview(total, validCount, invalidCount, missingCoords, va
   setText("preview-invalid-rows", invalidCount);
   setText("preview-coord-missing", missingCoords);
 
-  // Notices
   const noticesContainer = document.getElementById("ingestion-format-notices");
   if (noticesContainer) {
     noticesContainer.replaceChildren();
@@ -1933,16 +2070,16 @@ function showIngestionPreview(total, validCount, invalidCount, missingCoords, va
     });
   }
 
-  // Show format-specific sections
-  hideEl("csv-mapping-section");
-  hideEl("geojson-notice");
-  hideEl("pdf-section");
+  if (rebuildMapping) {
+    hideEl("csv-mapping-section");
+    hideEl("geojson-notice");
+    hideEl("pdf-section");
 
-  if (format === "csv")    showEl("csv-mapping-section");
-  if (format === "geojson") showEl("geojson-notice");
-  if (format === "pdf")    showEl("pdf-section");
+    if (format === "csv")    showEl("csv-mapping-section");
+    if (format === "geojson") showEl("geojson-notice");
+    if (format === "pdf")    showEl("pdf-section");
+  }
 
-  // Validation rows
   const validationWrapper = document.getElementById("validation-rows-wrapper");
   const validationList    = document.getElementById("validation-row-list");
   if (validationRows && validationRows.length > 0 && validationList) {
@@ -1963,11 +2100,9 @@ function showIngestionPreview(total, validCount, invalidCount, missingCoords, va
     validationWrapper.style.display = "none";
   }
 
-  // Media limitation notice
   const mediaNotice = document.getElementById("media-limitation-notice");
   if (mediaNotice) mediaNotice.style.display = format !== "pdf" ? "" : "none";
 
-  // Enable proceed if there are valid records
   const proceedBtn = document.getElementById("btn-ingest-proceed");
   const proceedHint = document.getElementById("ingestion-proceed-hint");
   if (proceedBtn) {
@@ -2047,7 +2182,6 @@ function initApp() {
   initJsonExport();
   initOrUpdateMap();
 
-  // Wire up demo buttons
   const btnReal = document.getElementById("btn-run-demo");
   if (btnReal) {
     btnReal.addEventListener("click", event => {
@@ -2062,39 +2196,30 @@ function initApp() {
     });
   }
 
-  // Welcome state "Run Synthetic Demo" button delegation
   document.getElementById("claims-list-container")?.addEventListener("click", event => {
     const demoButton = event.target.closest("[data-run-demo]");
     if (demoButton) requestReport("/demo/synthetic", null, demoButton);
   });
 
-  // GeoJSON upload on main upload control
   const geojsonUpload = document.getElementById("geojson-upload");
   if (geojsonUpload) {
     geojsonUpload.addEventListener("change", e => {
       const file = e.target.files[0];
-      if (file) requestReport("/triage", file);
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        setApiStatus("Selected file exceeds the 2 MiB limit.", "error");
+        geojsonUpload.value = "";
+        return;
+      }
+      const ext = file.name.split(".").pop().toLowerCase();
+      if (ext === "csv" || ext === "pdf") {
+        switchPage("ingestion");
+        processIngestFile(file);
+      } else {
+        requestReport("/triage", file);
+      }
     });
   }
-
-  // Full-page tab panel links (↗ link in panel tabs goes to ingestion page)
-  document.querySelectorAll(".panel-tab-link[data-page]").forEach(link => {
-    link.addEventListener("click", e => {
-      e.preventDefault();
-      switchPage(link.dataset.page);
-    });
-  });
-
-  // Footer page navigation links
-  document.querySelectorAll(".footer-link[data-page]").forEach(link => {
-    link.addEventListener("click", () => switchPage(link.dataset.page));
-  });
-
-  // Briefings page listen/download wiring
-  const listenFull  = document.getElementById("btn-listen-briefing-full");
-  const downloadFull = document.getElementById("btn-download-json-full");
-  if (listenFull)   listenFull.addEventListener("click",   () => toggleSpeech(listenFull));
-  if (downloadFull) downloadFull.addEventListener("click", () => downloadReportJson());
 
   setApiStatus(
     "Choose a demo dataset above to run through the live API, or upload a supported file.",
