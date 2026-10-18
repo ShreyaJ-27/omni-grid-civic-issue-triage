@@ -74,8 +74,11 @@ def test_dashboard_is_served_from_the_api_origin(client: TestClient) -> None:
     assert "Run Real Bengaluru Demo" in response.text
     assert "Run Synthetic Demo" in response.text
     assert script_response.status_code == 200
-    assert 'requestReport("/demo", null)' in script_response.text
-    assert 'requestReport("/demo/synthetic", null)' in script_response.text
+    assert 'requestReport("/demo", null, event.currentTarget)' in script_response.text
+    assert (
+        'requestReport("/demo/synthetic", null, event.currentTarget)'
+        in script_response.text
+    )
 
 
 def test_demo_endpoint_runs_checked_in_fixture_through_canonical_pipeline(

@@ -7,6 +7,7 @@ the same-origin API; it does not load an exported report as a fallback.
 ## Features
 - **Live API:** **Run Demo** calls `POST /demo`; GeoJSON uploads call `POST /triage`. Both render the validated `Report` returned by the canonical pipeline.
 - **Explicit failure states:** Loading, empty, validation, rate-limit, service, and timeout states are shown. API failures never switch to stale JSON.
+- **Intentional startup state:** The dashboard shell and map appear immediately with a welcome prompt. Processing begins only after a user runs the demo or uploads GeoJSON; failed requests provide a retry action.
 - **Zero-Dependency Core:** Pure vanilla HTML5/ES6 without heavy frameworks.
 - **Interactive Leaflet Map:** Renders API-returned complaint markers and hotspot circle overlays with OpenStreetMap tiles.
 - **Offline report inspection:** `web/demo/report.json` remains an exporter-produced artifact and is not used by the hosted dashboard.
