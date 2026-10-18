@@ -1,173 +1,11 @@
 /**
  * Omni-Grid Civic Issue Triage - Frontend Application
- * Consumes exported Report JSON from web/demo/report.json and renders
- * an interactive Leaflet map, statistics, hotspots, verdicts, and repair checks.
+ * Renders validated reports returned by the Omni-Grid API.
  */
-
-// Embedded fallback sample for when web/demo/report.json is unavailable (e.g. file:// or 404)
-const FALLBACK_REPORT = {
-  hotspots: [
-    {
-      id: "hotspot-silk-board",
-      centroid: [12.9172, 77.6228],
-      radius_m: 65.0,
-      complaint_ids: ["complaint-001", "complaint-002", "complaint-003"],
-      category_mix: { pothole: 2, waterlogging: 1 },
-      severity: 6.8
-    },
-    {
-      id: "hotspot-indiranagar",
-      centroid: [12.9784, 77.6408],
-      radius_m: 45.0,
-      complaint_ids: ["complaint-015", "complaint-017", "complaint-018"],
-      category_mix: { streetlight: 2, pothole: 1 },
-      severity: 7.2
-    }
-  ],
-  verdicts: [
-    {
-      complaint_id: "complaint-001",
-      verdict: "verified",
-      confidence: 0.95,
-      checks: [
-        { name: "geofence", passed: true, detail: "Closure photo within 12.4m of complaint GPS", value: 12.4 },
-        { name: "duplicate_hash", passed: true, detail: "No duplicate pHash match found", value: 0.12 },
-        { name: "timestamp_sanity", passed: true, detail: "Closure photo timestamp is chronologically valid", value: null }
-      ]
-    },
-    {
-      complaint_id: "complaint-003",
-      verdict: "suspect",
-      confidence: 0.85,
-      checks: [
-        { name: "geofence", passed: false, detail: "Closure photo GPS is 23.1 km away from complaint location (>50m)", value: 23120.0 },
-        { name: "duplicate_hash", passed: true, detail: "pHash check passed", value: 0.05 },
-        { name: "timestamp_sanity", passed: true, detail: "Timestamp check passed", value: null }
-      ]
-    },
-    {
-      complaint_id: "complaint-018",
-      verdict: "suspect",
-      confidence: 0.85,
-      checks: [
-        { name: "defect_sanity", passed: false, detail: "Streetlight complaint closed with pothole repair photo", value: null },
-        { name: "geofence", passed: true, detail: "Geofence check passed", value: 18.0 }
-      ]
-    }
-  ],
-  claims: [
-    {
-      text: "Spatial clustering identified 2 high-density civic hotspots in Bengaluru.",
-      cites: ["hotspot-silk-board", "hotspot-indiranagar"]
-    },
-    {
-      text: "Complaint complaint-003 was flagged as suspect due to a 23.1 km geofence mismatch.",
-      cites: ["complaint-003"]
-    },
-    {
-      text: "Complaint complaint-001 was verified genuine with valid GPS and timestamp evidence.",
-      cites: ["complaint-001"]
-    }
-  ],
-  stats: {
-    total_complaints: 6,
-    open_complaints: 3,
-    closed_complaints: 3,
-    hotspot_count: 2,
-    verified_count: 1,
-    suspect_count: 2,
-    inconclusive_count: 0
-  },
-  complaints: [
-    {
-      id: "complaint-001",
-      category: "pothole",
-      text: "Large pothole near Silk Board junction causing vehicle slowdown.",
-      lat: 12.9175,
-      lon: 77.6231,
-      created_at: "2026-10-14T08:30:00Z",
-      status: "closed",
-      media: [{ path: "demo/media/media_01.jpg", type: "image" }],
-      closure: {
-        closed_at: "2026-10-15T12:00:00Z",
-        media: [{ path: "demo/media/media_06.jpg", type: "image" }],
-        closed_by: "ward_contractor_42"
-      }
-    },
-    {
-      id: "complaint-002",
-      category: "pothole",
-      text: "Asphalt crater near service lane.",
-      lat: 12.9171,
-      lon: 77.6225,
-      created_at: "2026-10-14T09:15:00Z",
-      status: "open",
-      media: [],
-      closure: null
-    },
-    {
-      id: "complaint-003",
-      category: "waterlogging",
-      text: "Deep water accumulation across bus stop.",
-      lat: 12.9169,
-      lon: 77.6230,
-      created_at: "2026-10-14T10:00:00Z",
-      status: "closed",
-      media: [{ path: "demo/media/media_03.jpg", type: "image" }],
-      closure: {
-        closed_at: "2026-10-15T14:20:00Z",
-        media: [{ path: "demo/media/media_11.jpg", type: "image" }],
-        closed_by: "drainage_dept"
-      }
-    },
-    {
-      id: "complaint-015",
-      category: "streetlight",
-      text: "Streetlight fixture flickering and unlit at night on 100ft road.",
-      lat: 12.9782,
-      lon: 77.6405,
-      created_at: "2026-10-14T11:00:00Z",
-      status: "closed",
-      media: [{ path: "demo/media/media_02.jpg", type: "image" }],
-      closure: {
-        closed_at: "2026-10-15T16:00:00Z",
-        media: [{ path: "demo/media/media_07.jpg", type: "image" }],
-        closed_by: "bescom_field"
-      }
-    },
-    {
-      id: "complaint-017",
-      category: "pothole",
-      text: "Damaged road surface opposite metro pillar.",
-      lat: 12.9786,
-      lon: 77.6410,
-      created_at: "2026-10-14T12:00:00Z",
-      status: "open",
-      media: [],
-      closure: null
-    },
-    {
-      id: "complaint-018",
-      category: "streetlight",
-      text: "Broken lamp pole near pedestrian crossing.",
-      lat: 12.9784,
-      lon: 77.6408,
-      created_at: "2026-10-14T13:30:00Z",
-      status: "closed",
-      media: [{ path: "demo/media/media_02.jpg", type: "image" }],
-      closure: {
-        closed_at: "2026-10-15T18:00:00Z",
-        media: [{ path: "demo/media/media_13.jpg", type: "image" }],
-        closed_by: "contractor_bbmp"
-      }
-    }
-  ]
-};
 
 // Application state
 const state = {
   report: null,
-  isFallback: false,
   map: null,
   mapLayers: {
     hotspots: null,
@@ -216,38 +54,172 @@ function isValidCoord(lat, lon) {
 function resolveMediaPath(rawPath) {
   if (!rawPath) return "";
   const cleaned = String(rawPath).trim();
-  // If already relative to demo/media or media/
-  if (cleaned.startsWith("demo/media/") || cleaned.startsWith("media/")) {
+  if (cleaned.startsWith("demo/media/")) {
     return cleaned;
   }
-  // If from synthetic path "data/synthetic/media/media_XX.jpg"
-  const filename = cleaned.split("/").pop().split("\\").pop();
-  if (filename) {
-    return `demo/media/${filename}`;
+  if (
+    state.report &&
+    state.report.stats.api_demo_media === true &&
+    cleaned.startsWith("data/synthetic/media/")
+  ) {
+    const filename = cleaned.split("/").pop().split("\\").pop();
+    if (/^[a-zA-Z0-9._-]+$/.test(filename)) {
+      return `demo/media/${filename}`;
+    }
   }
-  return cleaned;
+  return "";
 }
 
 // App Initialization
 async function initApp() {
   setupTabs();
   setupFilterControls();
+  state.report = { hotspots: [], verdicts: [], claims: [], stats: {}, complaints: [] };
+  initOrUpdateMap();
+  setApiStatus("Run the checked-in synthetic complaints through the live API, or upload a GeoJSON file.");
+  document.getElementById("btn-run-demo").addEventListener("click", () => {
+    requestReport("/demo", null);
+  });
+  document.getElementById("geojson-upload").addEventListener("change", event => {
+    const file = event.target.files[0];
+    if (file) requestReport("/triage", file);
+  });
+}
 
-  let reportData = null;
-  try {
-    const res = await fetch("demo/report.json");
-    if (!res.ok) {
-      throw new Error(`HTTP error ${res.status} reading demo/report.json`);
-    }
-    reportData = await res.json();
-    state.isFallback = false;
-  } catch (err) {
-    console.warn("Could not load web/demo/report.json; using embedded fallback sample.", err);
-    reportData = FALLBACK_REPORT;
-    state.isFallback = true;
+function setApiStatus(message, status = "idle") {
+  const statusElement = document.getElementById("api-status");
+  statusElement.textContent = message;
+  statusElement.dataset.state = status;
+  const banner = document.getElementById("banner-notice");
+  banner.classList.toggle("active", status === "error");
+  banner.querySelector("span").textContent = status === "error" ? message : "";
+}
+
+function clearReport() {
+  state.report = { hotspots: [], verdicts: [], claims: [], stats: {}, complaints: [] };
+  state.verdictsMap.clear();
+  state.complaintsMap.clear();
+  state.markersMap.clear();
+  state.circlesMap.clear();
+  state.selectedComplaintId = null;
+  state.selectedHotspotId = null;
+  setText("stat-total-complaints", "—");
+  setText("stat-total-hotspots", "—");
+  setText("stat-suspect-closures", "—");
+  setText("stat-verified-closures", "—");
+  if (state.mapLayers.hotspots) state.mapLayers.hotspots.clearLayers();
+  if (state.mapLayers.complaints) state.mapLayers.complaints.clearLayers();
+  for (const id of [
+    "claims-list-container",
+    "hotspots-list-container",
+    "complaints-list-container"
+  ]) {
+    document.getElementById(id).replaceChildren(
+      createElem("div", ["state-message"], "Waiting for an API report.")
+    );
   }
+  document.getElementById("inspection-detail-container").replaceChildren(
+    createElem("div", ["state-message"], "Run a demo or upload GeoJSON to inspect evidence.")
+  );
+}
 
-  loadReport(reportData);
+function validateReport(data) {
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !Array.isArray(data.complaints) ||
+    !Array.isArray(data.hotspots) ||
+    !Array.isArray(data.verdicts) ||
+    !Array.isArray(data.claims) ||
+    !data.stats ||
+    typeof data.stats !== "object"
+  ) {
+    throw new Error("The API response does not match the Omni-Grid Report schema.");
+  }
+  for (const complaint of data.complaints) {
+    if (
+      !complaint ||
+      typeof complaint.id !== "string" ||
+      !isValidCoord(complaint.lat, complaint.lon)
+    ) {
+      throw new Error("The API returned an invalid complaint in its Report.");
+    }
+  }
+  return data;
+}
+
+function apiErrorMessage(error) {
+  if (error.name === "AbortError") {
+    return "The request timed out while the service was starting or processing. Please retry.";
+  }
+  if (error.status === 413) return "The GeoJSON request is too large; the limit is 2 MiB.";
+  if (error.status === 422) return `GeoJSON validation failed: ${error.message}`;
+  if (error.status === 429) return "Demo request limit reached. Wait a minute and retry.";
+  if (error.status === 503) return "The service is busy or waking from a cold start. Please retry.";
+  if (error.status >= 500) return "The API is unavailable or encountered an error. Please retry.";
+  if (error instanceof TypeError) {
+    return "Could not reach the API. The service may be starting; wait briefly and retry.";
+  }
+  return error.message || "The API request failed.";
+}
+
+async function requestReport(endpoint, file) {
+  const demoButton = document.getElementById("btn-run-demo");
+  const fileInput = document.getElementById("geojson-upload");
+  demoButton.disabled = true;
+  fileInput.disabled = true;
+  clearReport();
+  setApiStatus("Contacting the API. A free service may take up to three minutes to wake.", "loading");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180000);
+  try {
+    const options = { method: "POST", signal: controller.signal };
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        const error = new Error("Selected file exceeds the 2 MiB limit.");
+        error.status = 413;
+        throw error;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      options.body = form;
+    }
+    const response = await fetch(endpoint, options);
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new Error(`API returned an unreadable response (HTTP ${response.status}).`);
+    }
+    if (!response.ok) {
+      const error = new Error(
+        payload && typeof payload.detail === "string"
+          ? payload.detail
+          : `HTTP ${response.status}`
+      );
+      error.status = response.status;
+      throw error;
+    }
+    const report = validateReport(payload);
+    loadReport(report);
+    if (report.complaints.length === 0) {
+      setApiStatus("The API returned a valid Report with no complaints.", "empty");
+    } else {
+      const mode = report.stats.model_mode === "mock" ? "Deterministic mock mode" : "Live mode";
+      setApiStatus(
+        `Report received from the API: ${report.complaints.length} complaints. ${mode}; inspect checks and evidence below.`,
+        "success"
+      );
+    }
+  } catch (error) {
+    clearReport();
+    setApiStatus(apiErrorMessage(error), "error");
+  } finally {
+    clearTimeout(timeout);
+    demoButton.disabled = false;
+    fileInput.disabled = false;
+    fileInput.value = "";
+  }
 }
 
 function loadReport(data) {
@@ -270,17 +242,6 @@ function loadReport(data) {
         state.complaintsMap.set(String(c.id), c);
       }
     });
-  }
-
-  // Update banner notice
-  const banner = document.getElementById("banner-notice");
-  if (state.isFallback) {
-    banner.classList.add("active");
-    banner.replaceChildren();
-    const txt = createElem("span", [], "Notice: Loaded embedded fallback sample data (web/demo/report.json is not available over file:// or missing).");
-    banner.appendChild(txt);
-  } else {
-    banner.classList.remove("active");
   }
 
   // Render header stats

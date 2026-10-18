@@ -5,10 +5,11 @@ Automated tests do not prove that an agent discovers or invokes the skill.
 
 ## Client and prerequisites
 
-The skill uses the Agent Skills `SKILL.md` convention and is compatible with
-Claude Code. The documented example below uses Claude Code **2.1.283** on
-Windows; discover the installed version with `claude --version`. Install
-Python 3.11+, GNU Make, and the project dependencies first:
+The skill uses the portable Agent Skills `SKILL.md` convention. The open
+Skills CLI documents support for Claude Code, Codex, Cursor, OpenCode, and
+additional agent targets. This repository has **not** completed an interactive
+skill-discovery or invocation test in any coding agent. Python 3.11+, GNU
+Make, and the project dependencies are needed for local CLI execution:
 
 ```powershell
 make install
@@ -32,21 +33,29 @@ testing as appropriate.
 
 ## Manual live-agent smoke test
 
-1. Start Claude Code with the repository as the working directory and confirm
-   `/omni-grid` appears as an available skill. Inspect its displayed
-   description; it should distinguish the implemented Python evidence and
-   verification functions from the validator-only CLI commands. If it is missing,
-   check that the client is using the intended checkout and that the
-   `SKILL.md` file is directly inside `.claude\skills\omni-grid`.
-2. Without naming the skill, submit:
+1. Install from the public repo with the documented Skills CLI, selecting a
+   supported agent:
+
+   ```powershell
+   npx skills add https://github.com/ShreyaJ-27/omni-grid-civic-issue-triage/tree/main/skill/omni-grid --skill omni-grid
+   ```
+
+   For an unmerged branch, run the agent-specific manual setup below from the
+   checked-out feature branch instead. The install command is documented by
+   the upstream `skills` CLI and points directly at the directory containing
+   this `SKILL.md`.
+2. Start the selected agent and confirm it discovers the skill. Inspect its
+   description; it should distinguish implemented Python evidence and
+   verification functions from validator-only CLI commands.
+3. Without naming the skill, submit:
 
    > Analyze these civic complaints, identify hotspots, and check whether the reported closures are supported by evidence. Use the committed synthetic sample at `data/synthetic/complaints.geojson`.
 
-3. Observe the client. Record the client/version, whether the skill was
+4. Observe the client. Record the client/version, whether the skill was
    discovered, whether the natural-language request triggered it, and the
    exact commands/wrappers actually executed. Discovery alone does not prove
    automatic triggering.
-4. For hotspot-only analysis, expected behavior is to run ingestion and
+5. For hotspot-only analysis, expected behavior is to run ingestion and
    clustering through `triage` or its wrapper. That CLI output is a partial
    `Report` with empty `verdicts` and `claims`; `stats` lists later stages as
    unavailable. For the committed synthetic sample when closure checks and a
@@ -54,7 +63,7 @@ testing as appropriate.
    `python scripts/export_demo_report.py`. That exporter includes deterministic
    closure checks, mock-mode damage scoring, and a validated summary fallback;
    it does not perform a live model call or accept arbitrary input paths.
-5. Validate captured output without exposing complaint text unnecessarily:
+6. Validate captured output without exposing complaint text unnecessarily:
 
    ```powershell
    py -3.11 -c "import json; from omnigrid.schemas import Report; data=json.load(open('web/demo/report.json', encoding='utf-8')); Report.model_validate(data); print('Report schema valid')"
@@ -63,7 +72,7 @@ testing as appropriate.
    The demo exporter refreshes its intended tracked artifact and media. Do not
    commit unrelated generated output. When testing CLI output interactively,
    piping the command output to a parser is preferable to storing it.
-6. Mark this acceptance test **not verified** until the agent's observable
+7. Mark this acceptance test **not verified** until the agent's observable
    behavior confirms the automatic trigger, command invocation, and validated
    output. Record any dependency errors or corrections below in your own test
    notes; do not represent mocked tests as a live-agent result.
@@ -104,8 +113,8 @@ Common issues:
 
 ## Live-agent result
 
-**Manual verification pending.** Claude Code 2.1.283 was available in the
-development environment, but this repository change did not start an
-interactive agent session or make an API call. Therefore skill discovery,
-automatic natural-language triggering, the live commands invoked, and agent
-JSON handling have not been observed.
+**Manual verification pending.** No interactive agent was used to test skill
+discovery, automatic natural-language triggering, command invocation, or JSON
+handling during this implementation. The Skills CLI install instructions and
+metadata format are documented, but compatibility has not been demonstrated
+by a live-agent run.

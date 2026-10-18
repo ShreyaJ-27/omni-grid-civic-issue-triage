@@ -9,9 +9,9 @@ metadata:
 
 # Omni-Grid civic issue triage
 
-Use the repository CLI and shared Pydantic v2 schemas as the source of truth.
-Do not recreate ingestion, clustering, schema validation, or severity logic in
-agent code.
+Use the repository API, CLI, and shared Pydantic v2 schemas as the source of
+truth. Do not recreate ingestion, clustering, schema validation, or severity
+logic in agent code.
 
 ## When to use
 
@@ -39,6 +39,9 @@ closures are supported by evidence.
 - Evidence, verdict, and report validator inputs must already contain records
   matching `EvidenceMeta`, `Verdict`, or `Report`. Sample records under
   `data/samples/` are synthetic and their media paths are illustrative.
+- Hosted uploads accept a GeoJSON `Feature` or non-empty `FeatureCollection`
+  with `Point` features only, up to 2 MiB and 1,000 features. Media files are
+  not uploaded or persisted; referenced files are unavailable to the API.
 
 ## Available commands and contracts
 
@@ -70,26 +73,57 @@ reported as real model inference. For the committed synthetic demo, run
 `python scripts/export_demo_report.py` or `make export-demo`; both use the
 canonical pipeline and export only referenced media.
 
+## Hosted API and dashboard
+
+When the user asks for the hosted demo, use only a deployment URL they provide;
+never invent a URL. The dashboard requires no account and calls the API on the
+same origin:
+
+- `POST <base-url>/demo`, no request body: runs the checked-in synthetic
+  GeoJSON through `omnigrid.pipeline.run_pipeline` in deterministic mock mode.
+- `POST <base-url>/triage`, multipart field `file`: triages one GeoJSON upload.
+- Both return the shared `Report` with `hotspots`, `verdicts`, `claims`, `stats`,
+  and `complaints`. Check model-mode and stage-status fields. Mock mode does
+  not perform external model inference.
+- A valid empty report differs from an API error. Treat non-2xx responses,
+  timeouts, unreadable JSON, or invalid Reports as errors. Never substitute
+  `web/demo/report.json`, embedded sample data, or invented output after a
+  live request fails.
+- Free service cold starts can take up to three minutes. Report a timeout and
+  ask the user to retry. API uploads cannot include media; do not claim
+  unavailable photos were inspected.
+- Do not send personal data to the public demo. The synthetic fixture is not
+  municipal data or evidence of real-world validation.
+
+For a direct call, use the URL supplied by the user:
+
+```powershell
+$base = "https://<user-provided-host>"
+Invoke-RestMethod -Method Post -Uri "$base/demo" -TimeoutSec 180
+```
+
+If the service is unavailable, explain that no remote result was produced and
+offer the local CLI workflow instead. Do not silently substitute an offline
+report.
+
 ## Workflow
 
-1. Confirm the input path and whether the user wants the committed synthetic
-   sample. If data or paths are missing, ask instead of guessing.
-2. Read the relevant command's `--help` if the input shape or options are
-   unclear.
-3. Run the wrapper or CLI command with an argument list, keeping stdout as
-   JSON. Do not parse stderr as a result.
-4. For hotspot analysis, use `cluster` for hotspots only or `triage` for the
-   complete report. Inspect `stats.stage_status` for any skipped or fallback
-   stages.
-5. If asked to assess evidence, use the implemented Python evidence and
-   verification functions where suitable; do not claim that the `evidence` or
-   `verify` validator commands perform extraction or checks.
-6. Treat deterministic code checks as authoritative over any model opinion.
-   Optional vision checks must never override failed deterministic evidence.
+1. Confirm whether the user wants the remote synthetic demo or local input.
+   Ask for missing paths or hosted URLs instead of guessing.
+2. For the hosted demo, call only the documented endpoint and inspect its
+   returned Report. Treat HTTP errors, timeouts, and schema failures as errors.
+3. For local input, read command `--help` if necessary; run the CLI/wrapper
+   with an argument list, keeping JSON stdout separate from stderr diagnostics.
+4. For hotspot-only work use `cluster`; for full local processing use `triage`
+   or the shared `run_pipeline`. Inspect `stats.stage_status` for skipped or
+   fallback stages.
+5. The `evidence`, `verify`, and `summarize` CLI commands validate existing
+   JSON only; they do not run extraction/checks or generate reports.
+6. Treat deterministic code checks as authoritative. Optional vision checks
+   never override failed deterministic evidence.
 7. Describe a flagged case as **suspect** or **inconclusive**, never as fraud.
-   Suspect closure findings require human review. Do not identify people in
-   media or repeat complaint PII unnecessarily. Before using a hosted model
-   endpoint, disclose that selected images and task prompts are sent to it.
+   Require human review, minimize PII, and disclose that optional live local
+   inference sends selected images and prompts to the configured endpoint.
 
 ## Examples
 
@@ -118,3 +152,13 @@ py -3.11 skill\omni-grid\scripts\triage.py data\synthetic\complaints.geojson
 Wrappers locate the checkout from their own path, so they also work when
 invoked by absolute path from another working directory. See
 `docs/skill-smoke-test.md` for setup and the manual live-agent procedure.
+
+Install this skill from the public repository with the open Skills CLI:
+
+```powershell
+npx skills add https://github.com/ShreyaJ-27/omni-grid-civic-issue-triage/tree/main/skill/omni-grid --skill omni-grid
+```
+
+The CLI supports multiple agent targets; selection and discovery are
+runtime-specific. Automated metadata/wrapper tests are not proof of live-agent
+discovery or invocation.

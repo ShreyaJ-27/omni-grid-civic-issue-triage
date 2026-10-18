@@ -41,11 +41,16 @@ def test_index_html_exists_as_entrypoint():
     assert "css/style.css" in content
 
 
-def test_frontend_references_demo_report():
-    """Criterion 2: The frontend fetches web/demo/report.json."""
+def test_frontend_uses_live_api_without_stale_report_fallback():
+    """The hosted dashboard renders only reports returned by the API."""
     app_js = APP_JS.read_text(encoding="utf-8")
-    assert "demo/report.json" in app_js, "app.js must fetch demo/report.json."
+    assert 'requestReport("/demo", null)' in app_js
+    assert 'requestReport("/triage", file)' in app_js
+    assert "demo/report.json" not in app_js
+    assert "FALLBACK_REPORT" not in app_js
     assert 'document.createElement("video")' in app_js
+    assert "180000" in app_js
+    assert "validateReport(payload)" in app_js
 
 
 def test_demo_report_validates_against_shared_schema():
@@ -77,13 +82,19 @@ def test_demo_report_validates_against_shared_schema():
         assert -180.0 <= c.lon <= 180.0
 
 
-def test_embedded_fallback_sample_present_in_js():
-    """Criterion 4: Fallback sample appears when the JSON file cannot be loaded."""
+def test_live_dashboard_has_loading_error_and_empty_states():
     app_js = APP_JS.read_text(encoding="utf-8")
-    assert "FALLBACK_REPORT" in app_js, "app.js must contain FALLBACK_REPORT."
-    assert "banner-notice" in app_js, "app.js must manage the banner notice element."
-    assert "hotspots" in app_js
-    assert "verdicts" in app_js
+    assert 'setApiStatus("Contacting the API.' in app_js
+    assert 'status === "error"' in app_js
+    assert '"The API returned a valid Report with no complaints."' in app_js
+    assert "service may take up to three minutes" in app_js
+
+
+def test_dashboard_exposes_demo_and_geojson_upload_controls():
+    content = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'id="btn-run-demo"' in content
+    assert 'id="geojson-upload"' in content
+    assert 'id="api-status"' in content
 
 
 def test_changing_report_json_modifies_values_without_code_change(tmp_path):

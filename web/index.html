@@ -46,8 +46,17 @@
 
   <!-- Fallback / Error Alert Banner -->
   <div id="banner-notice" role="alert">
-    <span>Notice: Loaded embedded fallback sample data.</span>
+    <span></span>
   </div>
+
+  <section class="demo-controls" aria-label="Run civic triage">
+    <div class="demo-actions">
+      <button type="button" id="btn-run-demo" class="action-btn">Run Synthetic Demo</button>
+      <label class="upload-control" for="geojson-upload">Or upload GeoJSON</label>
+      <input id="geojson-upload" type="file" accept=".geojson,.json,application/geo+json,application/json">
+    </div>
+    <p id="api-status" role="status" aria-live="polite">Run the checked-in synthetic complaints through the live API, or upload a GeoJSON file.</p>
+  </section>
 
   <!-- Main Split Layout -->
   <main>

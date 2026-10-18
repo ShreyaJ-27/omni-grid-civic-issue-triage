@@ -1,8 +1,10 @@
-# Optional FastAPI service
+# FastAPI service and live dashboard
 
-The HTTP service is a thin, unauthenticated local interface to the same
-`omnigrid.pipeline.run_pipeline` implementation used by the CLI. The CLI remains
-the standard local entry point; installing or running the API is optional.
+The HTTP service serves the dashboard and API from one origin. It is
+unauthenticated by design for the synthetic hackathon demo; do not treat it as
+a municipal production service. Both public routes call the canonical
+`omnigrid.pipeline.run_pipeline` in deterministic mock mode. They never send
+uploads or images to an inference provider.
 
 ## Install and configure
 
@@ -15,19 +17,9 @@ python -m pip install -e ".[dev,pipeline,api]"
 
 Configuration uses the existing centralized settings and `.env` loading. Copy
 `.env.example` to the ignored `.env` file only if you need to customize it.
-`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_TEXT_MODEL`, `LLM_VISION_MODEL`,
-`GEOFENCE_METERS`, `CLUSTER_EPS_METERS`, and `CLUSTER_MIN_SAMPLES` load from
-`.env` or the process environment. `LLM_TIMEOUT` and `LLM_MOCK` are read from
-the process environment only; values for these settings in `.env` are not
-used. Credentials stay on the server and must never be sent in an upload or
-returned by the API.
-
-For deterministic, offline operation, enable the pipeline's existing mock
-mode. No provider, key, or model download is needed:
-
-```powershell
-$env:LLM_MOCK = "true"
-```
+The variables read by application code are listed and traced in
+[docs/deployment.md](deployment.md). No provider key is required for this
+API: public requests explicitly use mock mode.
 
 Start the server bound to localhost:
 
@@ -35,10 +27,9 @@ Start the server bound to localhost:
 python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-Stop it with `Ctrl+C`. The API runs synchronous pipeline work in a worker
-thread, so it does not block the async request event loop. LLM provider calls
-use the shared `LLM_TIMEOUT` setting (30 seconds by default) and existing
-client retry behavior; the API does not add an overall request deadline.
+Stop it with `Ctrl+C`. The API runs synchronous pipeline work in a worker thread and limits
+simultaneous pipeline runs to two. Since it uses mock mode, it makes no LLM
+provider calls.
 
 ## `GET /health`
 
@@ -71,9 +62,9 @@ The response is the shared `Report` schema: `hotspots`, `verdicts`, `claims`,
 `stats`, and `complaints`. It is validated by the pipeline before serialization.
 `stats.model_mode`, `stats.summary_fallback`, `stats.stage_status`, and related
 pipeline statistics describe whether inference ran, was skipped, or fell back.
-When providers are unavailable, only the pipeline's existing deterministic
-verification and validated template-summary fallback apply; the API does not
-invent model evidence or verification outcomes.
+The public API explicitly uses deterministic mock mode: no damage scoring or
+vision inference is claimed, and the summary is generated using the
+pipeline's mock-mode template.
 
 Complaint media is not uploaded by this endpoint. Relative media references
 are constrained to an empty per-request temporary directory, so the service
@@ -97,18 +88,37 @@ receives them; uploaded filenames are never used as server paths.
 The endpoint does not log uploaded content or personal complaint text. Server
 diagnostics include an opaque request identifier and exception type only.
 
+## `POST /demo`
+
+The dashboard's **Run Synthetic Demo** action calls this endpoint. It loads
+`data/synthetic/complaints.geojson` from the checked-in repository and runs
+the same canonical pipeline in mock mode. It accepts no request body and no
+caller-supplied file path. The response is the actual schema-validated `Report`
+generated for that request; it is not `web/demo/report.json`.
+
+## Dashboard and public-service limits
+
+`GET /` serves `web/index.html` and the frontend assets from the same origin.
+The dashboard displays only API responses. A failed API request clears any
+previously displayed report and shows a timeout, validation, busy, or
+unavailable message rather than falling back to the offline export.
+
+Both pipeline routes share a two-request concurrency cap and a process-local
+limit of 30 requests per client address per minute. The upload path also caps
+request size, file size, and feature count. The process-local limiter is
+best-effort and is not a substitute for provider/platform DDoS controls; it
+can behave differently behind reverse proxies or with multiple workers.
+
 ## Security and deployment limits
 
-This is an unauthenticated local/demo API, not a public production service.
-There is no permissive CORS configuration. Keep the listener on localhost.
-Public or shared deployment requires additional hardening outside this issue,
-including authentication and authorization, TLS and trusted proxy setup,
-rate/concurrency controls, operational request deadlines, provider quotas,
-privacy/data-retention review, and deployment-specific monitoring. Do not
-expose the service to a network without explicitly configuring and reviewing
-those controls.
+The Render configuration is for a public synthetic demo, not unrestricted
+production use. No permissive CORS configuration is enabled, and credentials
+or privileged filesystem operations are not exposed. Uploads cannot access
+server media paths; no uploaded media is persisted. Free-tier instances may
+cold-start, restart, and lose ephemeral files. Do not submit sensitive
+personal data. Production municipal use would require a separate privacy,
+availability, identity/access, observability, and operational security review.
 
-An opt-in live-model smoke test may be performed only after configuring a
-trusted compatible provider and server-side credentials in `.env` or process
-environment variables. Automated tests use mock mode and do not require live
-credentials or external services.
+Real inference remains available to local Python/CLI workflows when a
+compatible provider is explicitly configured. The public HTTP demo remains
+mock-only to bound costs and avoid sending public uploads to a third party.
