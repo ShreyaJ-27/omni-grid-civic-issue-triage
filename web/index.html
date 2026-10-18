@@ -1,161 +1,823 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Omni-Grid: Verifiable Civic Issue Triage</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌐</text></svg>">
-  
+  <title>Omni-Grid — Civic Field Desk</title>
+  <meta name="description" content="Omni-Grid verifiable civic issue triage and proof-of-fix verification dashboard for Bengaluru.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%231a3c18'/><text y='.9em' font-size='70' x='15'>🌐</text></svg>">
+
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-        crossorigin="" />
-        
+        crossorigin="">
+
   <!-- Application CSS -->
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- Skip navigation for screen readers -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
-  <!-- Top Header Navigation -->
-  <header>
-    <div class="header-container">
+  <!-- ======================================================================
+       Site Header
+       ====================================================================== -->
+  <header class="site-header" role="banner">
+    <div class="header-inner">
+
+      <!-- Logo -->
       <div class="logo-group">
-        <span class="logo-badge">OMNI-GRID</span>
-        <h1>Civic Issue Triage & Proof-of-Fix Verification</h1>
+        <div class="logo-icon" aria-hidden="true">⬡</div>
+        <div class="logo-text">
+          <div class="logo-name">OMNI-GRID</div>
+          <div class="logo-sub">Civic Field Desk</div>
+        </div>
       </div>
-      <div class="header-stats">
-        <div class="stat-item">
-          <span class="stat-label">Complaints</span>
-          <span class="stat-value" id="stat-total-complaints">—</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Hotspots</span>
-          <span class="stat-value" id="stat-total-hotspots">—</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Suspect Closures</span>
-          <span class="stat-value suspect" id="stat-suspect-closures">—</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">Verified Closures</span>
-          <span class="stat-value verified" id="stat-verified-closures">—</span>
-        </div>
+
+      <!-- Status pills -->
+      <div class="header-status" role="status" aria-label="System status">
+        <span class="status-pill">
+          <span class="status-dot red" aria-hidden="true"></span>
+          BENGALURU, IN
+        </span>
+        <span class="status-pill" id="system-status-pill">
+          <span class="status-dot green" aria-hidden="true"></span>
+          TRIAGE SYSTEM READY
+        </span>
+      </div>
+
+      <!-- Actions -->
+      <div class="header-actions">
+        <button type="button" class="btn btn-auditor" id="btn-open-auditor"
+                aria-label="Open AI Auditor simulator" aria-haspopup="dialog">
+          Test AI Auditor
+        </button>
+        <button type="button" class="btn btn-outline" id="btn-night-view"
+                aria-label="Toggle night view" aria-pressed="false">
+          Night view
+        </button>
+        <button type="button" class="btn btn-ghost" aria-label="More options" aria-haspopup="menu">⋮</button>
       </div>
     </div>
   </header>
 
-  <!-- Fallback / Error Alert Banner -->
-  <div id="banner-notice" role="alert">
-    <span></span>
-  </div>
+  <!-- ======================================================================
+       Primary Navigation
+       ====================================================================== -->
+  <nav class="primary-nav" aria-label="Primary navigation">
+    <ul class="nav-tabs" role="tablist">
+      <li role="none">
+        <button class="nav-tab active" role="tab" aria-selected="true"
+                data-page="overview" aria-controls="page-overview">Overview</button>
+      </li>
+      <li role="none">
+        <button class="nav-tab" role="tab" aria-selected="false"
+                data-page="citymap" aria-controls="page-citymap">City Map</button>
+      </li>
+      <li role="none">
+        <button class="nav-tab" role="tab" aria-selected="false"
+                data-page="issues" aria-controls="page-issues">Issues</button>
+      </li>
+      <li role="none">
+        <button class="nav-tab" role="tab" aria-selected="false"
+                data-page="hotspots" aria-controls="page-hotspots">Hotspots</button>
+      </li>
+      <li role="none">
+        <button class="nav-tab" role="tab" aria-selected="false"
+                data-page="proofoffix" aria-controls="page-proofoffix">Proof of Fix</button>
+      </li>
+      <li role="none">
+        <button class="nav-tab" role="tab" aria-selected="false"
+                data-page="briefings" aria-controls="page-briefings">Briefings &amp; Reports</button>
+      </li>
+    </ul>
+    <button class="nav-tab nav-tab-ingestion" role="tab" aria-selected="false"
+            data-page="ingestion" aria-controls="page-ingestion">Data Ingestion</button>
+  </nav>
 
-  <section class="demo-controls" aria-label="Run civic triage">
-    <div class="demo-actions">
-      <button type="button" id="btn-run-demo" class="action-btn real-btn">Run Real Bengaluru Demo</button>
-      <button type="button" id="btn-run-demo-synthetic" class="action-btn synthetic-btn">Run Synthetic Demo</button>
-      <label class="upload-control" for="geojson-upload">Or upload GeoJSON</label>
-      <input id="geojson-upload" type="file" accept=".geojson,.json,application/geo+json,application/json">
-    </div>
-    <p id="api-status" role="status" aria-live="polite">Choose a demo dataset above to run through the live API, or upload a GeoJSON file.</p>
-  </section>
+  <!-- ======================================================================
+       Notice / Error Banner
+       ====================================================================== -->
+  <div id="banner-notice" role="alert" aria-live="assertive"></div>
 
-  <!-- Main Split Layout -->
-  <main>
-    <!-- Left Column: Interactive Map -->
-    <section class="map-column" aria-label="Interactive Map View">
-      <div class="map-controls-bar">
-        <div class="filter-group">
-          <label for="filter-status">Status:</label>
-          <select id="filter-status">
-            <option value="all">All Statuses</option>
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-          </select>
+  <!-- ======================================================================
+       Page Content
+       ====================================================================== -->
+  <main id="main-content" class="page-content">
 
-          <label for="filter-category">Category:</label>
-          <select id="filter-category">
-            <option value="all">All Categories</option>
-            <option value="pothole">Pothole</option>
-            <option value="waterlogging">Waterlogging</option>
-            <option value="streetlight">Streetlight</option>
-            <option value="other">Other</option>
-          </select>
+    <!-- ==================================================================
+         OVERVIEW PAGE
+         ================================================================== -->
+    <div id="page-overview" class="tab-page active" role="tabpanel" aria-labelledby="tab-overview">
 
-          <label for="filter-verdict">Verdict:</label>
-          <select id="filter-verdict">
-            <option value="all">All Verdicts</option>
-            <option value="verified">Verified Genuine</option>
-            <option value="suspect">Suspect Flagged</option>
-            <option value="inconclusive">Inconclusive</option>
-          </select>
+      <div class="overview-layout">
+
+        <!-- Breadcrumb -->
+        <div class="overview-breadcrumb" aria-label="Breadcrumb">
+          — MUNICIPAL RESPONSE / FIELD VIEW 01
         </div>
 
-        <div class="filter-group">
-          <input type="text" id="search-input" placeholder="Search ID or description..." aria-label="Search complaints">
-          <button type="button" id="btn-reset-filters" class="tab-btn" style="padding: 0.35rem 0.6rem; border: 1px solid var(--border); font-size: 0.8rem;">Reset</button>
+        <!-- Hero + summary cards -->
+        <div class="overview-hero">
+          <div class="hero-copy">
+            <h1>See the signal.<br><span class="italic-accent">Close the loop.</span></h1>
+            <p>One shared view of what the city needs—and what actually got fixed.</p>
+          </div>
 
-          <label style="margin-left: 0.5rem; display: flex; align-items: center; gap: 0.25rem;">
-            <input type="checkbox" id="toggle-hotspots" checked> Hotspots
-          </label>
-          <label style="margin-left: 0.25rem; display: flex; align-items: center; gap: 0.25rem;">
-            <input type="checkbox" id="toggle-complaints" checked> Pins
-          </label>
+          <!-- Summary Cards -->
+          <div class="summary-cards" role="list" aria-label="Quick statistics">
+
+            <div class="summary-card" role="listitem button" tabindex="0"
+                 data-filter-action="all" aria-label="Issues tracked — click to show all issues">
+              <div class="card-label">Issues Tracked</div>
+              <div class="card-number" id="stat-total-complaints">—</div>
+              <div class="card-hint">across the city <span class="card-arrow">↗</span></div>
+            </div>
+
+            <div class="summary-card" role="listitem button" tabindex="0"
+                 data-filter-action="hotspots" aria-label="Active hotspots — click to view hotspots">
+              <div class="card-label">Active Hotspots</div>
+              <div class="card-number" id="stat-total-hotspots">—</div>
+              <div class="card-hint">clusters detected <span class="card-arrow">↗</span></div>
+            </div>
+
+            <div class="summary-card" role="listitem button" tabindex="0"
+                 data-filter-action="suspect" aria-label="Needs a second look — click to filter suspect closures">
+              <div class="card-label">Needs a Second Look</div>
+              <div class="card-number suspect" id="stat-suspect-closures">—</div>
+              <div class="card-hint">suspect closures <span class="card-arrow">↗</span></div>
+            </div>
+
+            <div class="summary-card" role="listitem button" tabindex="0"
+                 data-filter-action="verified" aria-label="Proof checked — click to filter verified closures">
+              <div class="card-label">Proof Checked</div>
+              <div class="card-number verified" id="stat-verified-closures">—</div>
+              <div class="card-hint">verified closures <span class="card-arrow">↗</span></div>
+            </div>
+
+          </div>
         </div>
-      </div>
 
-      <div id="map" role="region" aria-label="Geographic Leaflet Map"></div>
-    </section>
+        <!-- Data Ingestion Bar -->
+        <div class="ingestion-bar" role="region" aria-label="Data ingestion controls">
+          <div class="ingestion-label-group">
+            <div class="label">DATA INGESTION</div>
+            <div class="hint">Preview a supported file before it can replace the visible report.</div>
+          </div>
 
-    <!-- Right Column: Navigation Tabs & Detail Panels -->
-    <section class="panels-column" aria-label="Triage Data Panels">
-      <nav class="tabs-nav" aria-label="Panel Navigation">
-        <button class="tab-btn active" data-tab="tab-claims">Summary Claims</button>
-        <button class="tab-btn" data-tab="tab-hotspots">Hotspots</button>
-        <button class="tab-btn" data-tab="tab-complaints">Complaints</button>
-        <button class="tab-btn" data-tab="tab-inspection">Inspection & Checks</button>
-      </nav>
+          <div class="ingestion-actions">
+            <!-- Real sample -->
+            <button type="button" id="btn-run-demo" class="btn-run-real"
+                    aria-label="Run real Bengaluru sample dataset through triage pipeline">
+              <span class="play-icon" aria-hidden="true">▶</span>
+              Run real sample
+              <span class="visually-hidden">(Run Real Bengaluru Demo)</span>
+            </button>
 
-      <!-- Tab 1: Validated Summary Claims -->
-      <div id="tab-claims" class="tab-content active" role="tabpanel">
-        <div id="claims-list-container">
-          <section class="welcome-state" aria-labelledby="welcome-heading">
-            <div class="welcome-icon" aria-hidden="true">⌖</div>
-            <h2 id="welcome-heading">Ready to analyze civic complaints?</h2>
-            <p>Omni-Grid processes complaint data, identifies geographic hotspots, and helps review evidence and closure claims.</p>
-            <button type="button" class="action-btn welcome-demo-btn" data-run-demo>Run Synthetic Demo</button>
-            <p class="welcome-upload-hint">Have a dataset? Use “Or upload GeoJSON” above to process a supported GeoJSON file.</p>
+            <!-- Synthetic scenarios -->
+            <button type="button" id="btn-run-demo-synthetic" class="btn-synthetic"
+                    aria-label="Run synthetic scenario dataset">
+              Synthetic scenarios
+              <span class="visually-hidden">(Run Synthetic Demo)</span>
+            </button>
+
+            <!-- File upload -->
+            <label class="upload-zone" for="geojson-upload"
+                   aria-label="Upload civic data file — CSV, JSON, GeoJSON or PDF, maximum 2 MB">
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <span>Upload civic data</span>
+              <input id="geojson-upload" type="file"
+                     accept=".geojson,.json,.csv,.pdf,application/geo+json,application/json,text/csv,application/pdf"
+                     aria-label="Select file to upload (CSV, JSON, GeoJSON, or PDF, max 2 MB)">
+            </label>
+            <div class="upload-hint" aria-hidden="true">CSV · JSON · GeoJSON · PDF · 2 MB max</div>
+          </div>
+
+          <!-- API status -->
+          <p id="api-status" class="ingestion-status" role="status" aria-live="polite">
+            Choose a demo dataset above to run through the live API, or upload a supported file.
+          </p>
+        </div>
+
+        <!-- Main split layout: Map + Panels -->
+        <div class="split-layout">
+
+          <!-- ============================================================
+               LEFT: City Map
+               ============================================================ -->
+          <section class="map-column" aria-label="Live issue terrain map">
+
+            <!-- Map header -->
+            <div class="map-column-header">
+              <div>
+                <div class="map-live-label">
+                  <span class="live-dot" aria-hidden="true"></span>
+                  LIVE ISSUE TERRAIN
+                </div>
+                <div class="map-title">
+                  City map
+                  <span class="map-subtitle">/ Bengaluru</span>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span class="map-count-badge" id="map-count-badge" aria-live="polite" aria-atomic="true">—</span>
+                <div class="map-header-actions">
+                  <button type="button" class="btn-icon" id="btn-fit-map"
+                          aria-label="Fit map to show all issues">⊞</button>
+                  <button type="button" class="btn-icon" id="btn-fullscreen-map"
+                          aria-label="Expand map to full tab">⤢</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Filter bar -->
+            <div class="map-filter-bar" role="search" aria-label="Filter issues on map">
+              <select id="filter-status" class="filter-select" aria-label="Filter by status">
+                <option value="all">All statuses</option>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+              </select>
+
+              <select id="filter-category" class="filter-select" aria-label="Filter by category">
+                <option value="all">All categories</option>
+                <option value="pothole">Pothole</option>
+                <option value="waterlogging">Waterlogging</option>
+                <option value="streetlight">Streetlight</option>
+                <option value="garbage">Garbage</option>
+                <option value="other">Other</option>
+              </select>
+
+              <select id="filter-verdict" class="filter-select" aria-label="Filter by verdict">
+                <option value="all">All verdicts</option>
+                <option value="verified">Verified</option>
+                <option value="suspect">Suspect</option>
+                <option value="inconclusive">Inconclusive</option>
+              </select>
+
+              <input type="text" id="search-input" class="filter-search"
+                     placeholder="Find an issue…" aria-label="Search complaints by ID or description">
+
+              <button type="button" id="btn-reset-filters" class="filter-reset" aria-label="Reset all filters">
+                Reset
+              </button>
+
+              <label class="layer-toggle-label" title="Toggle hotspot circles">
+                <input type="checkbox" id="toggle-hotspots" checked aria-label="Show hotspot circles">
+                <span style="color: #f97316;">●</span> Hotspots
+              </label>
+              <label class="layer-toggle-label" title="Toggle complaint pins">
+                <input type="checkbox" id="toggle-complaints" checked aria-label="Show complaint pins">
+                <span style="color: #0284c7;">●</span> Issues
+              </label>
+            </div>
+
+            <!-- Map -->
+            <div id="map" role="region" aria-label="Geographic complaint map — Bengaluru"></div>
+
+            <!-- Map footer / legend -->
+            <div class="map-footer" aria-label="Map legend">
+              <div class="map-legend" aria-label="Legend">
+                <span class="legend-item"><span class="legend-dot open" aria-hidden="true"></span>Open</span>
+                <span class="legend-item"><span class="legend-dot verified" aria-hidden="true"></span>Verified</span>
+                <span class="legend-item"><span class="legend-dot suspect" aria-hidden="true"></span>Suspect</span>
+                <span class="legend-item"><span class="legend-dot inconclusive" aria-hidden="true"></span>Review</span>
+                <span class="legend-item"><span class="legend-dot hotspot" aria-hidden="true"></span>Cluster</span>
+              </div>
+              <span class="map-footer-note">Evidence-led triage — every dot is a report, every ring is a cluster.</span>
+              <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" class="map-footer-link">OpenStreetMap ↗</a>
+            </div>
           </section>
+
+          <!-- ============================================================
+               RIGHT: Panel tabs
+               ============================================================ -->
+          <section class="panels-column" aria-label="Triage data panels">
+
+            <!-- Panel sub-tabs -->
+            <nav class="panel-tabs" aria-label="Data panel navigation" role="tablist">
+              <button class="panel-tab active" role="tab" aria-selected="true"
+                      data-panel="panel-briefing" aria-controls="panel-briefing">
+                Briefing
+                <span class="tab-count" id="tab-count-briefing" aria-label="claim count"></span>
+              </button>
+              <button class="panel-tab" role="tab" aria-selected="false"
+                      data-panel="panel-hotspots" aria-controls="panel-hotspots">
+                Hotspots
+                <span class="tab-count" id="tab-count-hotspots" aria-label="hotspot count"></span>
+              </button>
+              <button class="panel-tab" role="tab" aria-selected="false"
+                      data-panel="panel-issues" aria-controls="panel-issues">
+                Issues
+                <span class="tab-count" id="tab-count-issues" aria-label="issue count"></span>
+              </button>
+              <button class="panel-tab" role="tab" aria-selected="false"
+                      data-panel="panel-proof" aria-controls="panel-proof">
+                Proof
+              </button>
+              <a href="#page-ingestion" class="panel-tab-link" data-page="ingestion"
+                 aria-label="Go to full data ingestion page">↗</a>
+            </nav>
+
+            <!-- BRIEFING PANEL -->
+            <div id="panel-briefing" class="panel-content active" role="tabpanel">
+              <div class="briefing-panel">
+                <div class="briefing-header">
+                  <div class="briefing-section-label">CITY BRIEFING</div>
+                  <div class="briefing-cite-note">CITATIONS ARE CLICKABLE</div>
+                </div>
+                <div class="briefing-hero">
+                  <div class="briefing-what-label">WHAT THE DATA SAYS</div>
+                  <h2>Signals from<br><em>the street.</em></h2>
+                  <p>Validated claims, with a trail back to the reports.</p>
+                </div>
+                <div id="claims-list-container" class="claims-list" aria-live="polite" aria-atomic="false">
+                  <!-- Welcome state (shown before any data is loaded) -->
+                  <section class="welcome-state" aria-labelledby="welcome-heading">
+                    <div class="welcome-icon" aria-hidden="true">⌖</div>
+                    <h2 id="welcome-heading">Ready to analyze civic complaints?</h2>
+                    <p>Omni-Grid processes complaint data, identifies geographic hotspots, and helps review evidence and closure claims.</p>
+                    <button type="button" class="btn btn-primary" style="margin-top:0.25rem;"
+                            data-run-demo aria-label="Run synthetic scenario demo">
+                      Run Synthetic Demo
+                    </button>
+                  </section>
+                </div>
+                <div class="briefing-actions">
+                  <button type="button" class="btn-listen" id="btn-listen-briefing"
+                          aria-label="Listen to city briefing using speech synthesis"
+                          aria-pressed="false">
+                    🔊 Listen to briefing
+                  </button>
+                  <button type="button" class="btn-download-json" id="btn-download-json"
+                          aria-label="Download current report as JSON file">
+                    ⬇ Download report JSON
+                  </button>
+                </div>
+                <div class="trust-badge" role="note">
+                  <span class="trust-icon" aria-hidden="true">✓</span>
+                  <div class="trust-text">
+                    <div class="trust-title">Traceable by design</div>
+                    <div class="trust-desc">Every claim points to source complaints or a mapped hotspot.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- HOTSPOTS PANEL -->
+            <div id="panel-hotspots" class="panel-content" role="tabpanel">
+              <div class="hotspots-panel" id="hotspots-list-container" aria-live="polite">
+                <div class="state-message">Hotspot analysis will appear after a dataset is processed.</div>
+              </div>
+            </div>
+
+            <!-- ISSUES PANEL -->
+            <div id="panel-issues" class="panel-content" role="tabpanel">
+              <div class="issues-panel" id="complaints-list-container" aria-live="polite">
+                <div class="state-message">Complaints will appear here after a dataset is processed.</div>
+              </div>
+            </div>
+
+            <!-- PROOF PANEL -->
+            <div id="panel-proof" class="panel-content" role="tabpanel">
+              <div class="inspection-panel" id="inspection-detail-container" aria-live="polite">
+                <div class="state-message">Verification results will appear here after a dataset is processed.</div>
+              </div>
+            </div>
+
+          </section>
+        </div><!-- .split-layout -->
+      </div><!-- .overview-layout -->
+    </div><!-- #page-overview -->
+
+    <!-- ==================================================================
+         CITY MAP PAGE (full-page map)
+         ================================================================== -->
+    <div id="page-citymap" class="tab-page" role="tabpanel" aria-labelledby="tab-citymap">
+      <div class="fullpage-tab">
+        <div class="fullpage-map-col">
+          <div class="map-column-header">
+            <div class="map-title">City Map <span class="map-subtitle">/ Bengaluru — Full View</span></div>
+            <button type="button" class="btn-icon" id="btn-fit-map-full" aria-label="Fit map to data">⊞</button>
+          </div>
+          <div class="map-filter-bar" role="search" aria-label="Filter map issues">
+            <select id="filter-status-full" class="filter-select" aria-label="Filter by status (full map)">
+              <option value="all">All statuses</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+            </select>
+            <select id="filter-category-full" class="filter-select" aria-label="Filter by category (full map)">
+              <option value="all">All categories</option>
+              <option value="pothole">Pothole</option>
+              <option value="waterlogging">Waterlogging</option>
+              <option value="streetlight">Streetlight</option>
+              <option value="garbage">Garbage</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <!-- Reuses the same map div managed by Leaflet -->
+          <div style="padding: 1rem; color: var(--text-muted); font-size: 0.85rem; flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 0.5rem; text-align: center;">
+            <div>🗺️</div>
+            <strong>City Map</strong>
+            <p style="max-width: 30ch;">The interactive map is in the Overview tab. Switch to Overview to use the live Leaflet map.</p>
+            <button type="button" class="btn btn-primary" data-page="overview">Go to Overview</button>
+          </div>
         </div>
       </div>
+    </div>
 
-      <!-- Tab 2: Hotspot Clusters -->
-      <div id="tab-hotspots" class="tab-content" role="tabpanel">
-        <div id="hotspots-list-container">
-          <div class="state-message">Hotspot analysis will appear after a dataset is processed.</div>
+    <!-- ==================================================================
+         ISSUES PAGE
+         ================================================================== -->
+    <div id="page-issues" class="tab-page" role="tabpanel" aria-labelledby="tab-issues">
+      <div class="fullpage-tab">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+          <h2 style="font-size:1.1rem; font-weight:800;">Issues</h2>
+          <div class="map-filter-bar" style="flex:1; padding:0; border:none; background:transparent;">
+            <select class="filter-select" id="filter-status-issues" aria-label="Filter by status">
+              <option value="all">All statuses</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+            </select>
+            <select class="filter-select" id="filter-category-issues" aria-label="Filter by category">
+              <option value="all">All categories</option>
+              <option value="pothole">Pothole</option>
+              <option value="waterlogging">Waterlogging</option>
+              <option value="streetlight">Streetlight</option>
+              <option value="garbage">Garbage</option>
+              <option value="other">Other</option>
+            </select>
+            <select class="filter-select" id="filter-verdict-issues" aria-label="Filter by verdict">
+              <option value="all">All verdicts</option>
+              <option value="verified">Verified</option>
+              <option value="suspect">Suspect</option>
+              <option value="inconclusive">Inconclusive</option>
+            </select>
+            <input type="text" id="search-input-issues" class="filter-search"
+                   placeholder="Search issues…" aria-label="Search complaints">
+          </div>
         </div>
-      </div>
-
-      <!-- Tab 3: Filtered Complaints List -->
-      <div id="tab-complaints" class="tab-content" role="tabpanel">
-        <div id="complaints-list-container">
+        <div id="issues-page-list" class="issues-panel"
+             style="background:var(--bg-card); border:1.5px solid var(--border); border-radius:var(--radius-lg); padding:0.85rem; flex:1; overflow-y:auto;">
           <div class="state-message">Complaints will appear here after a dataset is processed.</div>
         </div>
       </div>
+    </div>
 
-      <!-- Tab 4: Inspection & Repair Checks Drawer -->
-      <div id="tab-inspection" class="tab-content" role="tabpanel">
-        <div id="inspection-detail-container">
-          <div class="state-message">Verification results will appear here after a dataset is processed.</div>
+    <!-- ==================================================================
+         HOTSPOTS PAGE
+         ================================================================== -->
+    <div id="page-hotspots" class="tab-page" role="tabpanel" aria-labelledby="tab-hotspots">
+      <div class="fullpage-tab">
+        <h2 style="font-size:1.1rem; font-weight:800; margin-bottom:0.75rem;">Hotspots</h2>
+        <div id="hotspots-page-list"
+             style="background:var(--bg-card); border:1.5px solid var(--border); border-radius:var(--radius-lg); padding:0.85rem; flex:1; overflow-y:auto;">
+          <div class="state-message">Hotspot analysis will appear after a dataset is processed.</div>
         </div>
       </div>
-    </section>
+    </div>
+
+    <!-- ==================================================================
+         PROOF OF FIX PAGE
+         ================================================================== -->
+    <div id="page-proofoffix" class="tab-page" role="tabpanel" aria-labelledby="tab-proofoffix">
+      <div class="fullpage-tab">
+        <h2 style="font-size:1.1rem; font-weight:800; margin-bottom:0.75rem;">Proof of Fix</h2>
+        <div id="proof-page-container"
+             style="background:var(--bg-card); border:1.5px solid var(--border); border-radius:var(--radius-lg); padding:0.85rem; flex:1; overflow-y:auto;">
+          <div class="state-message">Select a complaint from the Issues tab or map to view its verification checks.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================================================================
+         BRIEFINGS & REPORTS PAGE
+         ================================================================== -->
+    <div id="page-briefings" class="tab-page" role="tabpanel" aria-labelledby="tab-briefings">
+      <div class="fullpage-tab">
+        <div id="briefings-page-container"
+             style="background:var(--bg-card); border:1.5px solid var(--border); border-radius:var(--radius-lg); flex:1; overflow-y:auto;">
+          <div class="briefing-panel">
+            <div class="briefing-header">
+              <div class="briefing-section-label">CITY BRIEFING</div>
+              <div class="briefing-cite-note">CITATIONS ARE CLICKABLE</div>
+            </div>
+            <div class="briefing-hero">
+              <div class="briefing-what-label">WHAT THE DATA SAYS</div>
+              <h2>Signals from<br><em>the street.</em></h2>
+              <p>Validated claims, with a trail back to the reports.</p>
+            </div>
+            <div id="briefings-claims-container" class="claims-list">
+              <div class="state-message">Briefing claims will appear after a dataset is processed.</div>
+            </div>
+            <div class="briefing-actions">
+              <button type="button" class="btn-listen" id="btn-listen-briefing-full"
+                      aria-label="Listen to city briefing" aria-pressed="false">
+                🔊 Listen to briefing
+              </button>
+              <button type="button" class="btn-download-json" id="btn-download-json-full"
+                      aria-label="Download report JSON">
+                ⬇ Download report JSON
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================================================================
+         DATA INGESTION PAGE
+         ================================================================== -->
+    <div id="page-ingestion" class="tab-page" role="tabpanel" aria-labelledby="tab-ingestion">
+      <div class="ingestion-panel">
+
+        <div class="ingestion-panel-header">
+          <h2>Civic Data Ingestion</h2>
+          <p>Preview a supported file before it replaces the active report. Files are parsed locally in your browser before upload.</p>
+        </div>
+
+        <!-- Drop zone -->
+        <div class="drop-zone" id="ingestion-drop-zone" role="region"
+             aria-label="File drop zone for civic data ingestion">
+          <div class="drop-zone-icon" aria-hidden="true">📁</div>
+          <div class="drop-zone-label">Drop a file here or click to browse</div>
+          <div class="drop-zone-hint">Maximum 2 MB. Preview shown before any data is sent to the API.</div>
+          <div class="drop-zone-formats" aria-label="Supported formats">
+            <span class="format-tag">CSV</span>
+            <span class="format-tag">JSON array</span>
+            <span class="format-tag">GeoJSON Points</span>
+            <span class="format-tag">PDF tables</span>
+          </div>
+          <input type="file" id="ingestion-file-input"
+                 accept=".csv,.json,.geojson,.pdf,text/csv,application/json,application/geo+json,application/pdf"
+                 aria-label="Select civic data file to ingest">
+        </div>
+
+        <!-- Format-specific notices -->
+        <div id="ingestion-format-notices" aria-live="polite" aria-atomic="true"></div>
+
+        <!-- Preview section (hidden until file selected) -->
+        <div id="ingestion-preview-section" class="ingestion-preview" style="display:none;"
+             aria-live="polite">
+          <h3 id="ingestion-preview-title">Preview</h3>
+
+          <div class="preview-stats" aria-label="Preview statistics">
+            <div class="preview-stat">
+              <span class="val" id="preview-total-rows">0</span>
+              <span class="lbl">Rows detected</span>
+            </div>
+            <div class="preview-stat">
+              <span class="val ok" id="preview-valid-rows">0</span>
+              <span class="lbl">Valid records</span>
+            </div>
+            <div class="preview-stat">
+              <span class="val warn" id="preview-invalid-rows">0</span>
+              <span class="lbl">Skipped / invalid</span>
+            </div>
+            <div class="preview-stat">
+              <span class="val" id="preview-coord-missing">0</span>
+              <span class="lbl">Missing coords</span>
+            </div>
+          </div>
+
+          <!-- CSV field mapping (shown for CSV) -->
+          <div id="csv-mapping-section" style="display:none;">
+            <div class="ingestion-notice info" style="margin-bottom:0.75rem;">
+              <strong>CSV Field Mapping</strong> — Match your CSV columns to the Omni-Grid complaint model.
+              Columns marked <em>required</em> must be mapped to proceed.
+              Records missing required fields will be skipped and listed below.
+            </div>
+            <div class="mapping-table-wrapper">
+              <table class="mapping-table" id="csv-mapping-table" aria-label="CSV column to complaint field mapping">
+                <thead>
+                  <tr>
+                    <th>CSV Column</th>
+                    <th>Maps to Omni-Grid field</th>
+                    <th>Required?</th>
+                    <th>Sample value</th>
+                  </tr>
+                </thead>
+                <tbody id="csv-mapping-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- GeoJSON notice -->
+          <div id="geojson-notice" class="ingestion-notice info" style="display:none;">
+            Only GeoJSON <strong>Point</strong> features are supported. Polygon, LineString and other geometry
+            types will be skipped. Each feature's <code>properties</code> must include
+            <code>id</code>, <code>category</code>, <code>status</code>, <code>created_at</code>, and <code>text</code>.
+          </div>
+
+          <!-- PDF notice + consent -->
+          <div id="pdf-section" style="display:none;">
+            <div class="ingestion-notice warning">
+              <strong>PDF ingestion</strong> — Only tabular complaint tables in structured PDFs are supported.
+              Scanned images in PDFs require OCR, which is not performed by this browser interface.
+            </div>
+            <div class="pdf-consent-box">
+              <label class="pdf-consent-label" for="pdf-consent-check">
+                <input type="checkbox" id="pdf-consent-check">
+                I confirm I have reviewed the extracted table below and understand that the data may be
+                incomplete. Scanned-PDF OCR is not available in this interface.
+              </label>
+            </div>
+            <div class="ocr-prereqs" role="note">
+              <strong>OCR prerequisites (CLI only):</strong>
+              PDF text extraction via OCR requires <code>python-poppler</code> or <code>pdf2image</code>,
+              <code>pytesseract</code>, and a working <code>Tesseract</code> installation.
+              Run <code>omnigrid ingest --help</code> for details.
+              OCR is not available in this browser preview — extracted text comes from the PDF's embedded
+              text layer only.
+            </div>
+          </div>
+
+          <!-- Row validation list -->
+          <div id="validation-rows-wrapper" style="display:none; margin-top:0.75rem;">
+            <div class="briefing-section-label" style="margin-bottom:0.35rem;">ROW-LEVEL VALIDATION</div>
+            <div class="validation-row-list" id="validation-row-list" role="list"
+                 aria-label="Row-level validation results"></div>
+          </div>
+
+          <!-- Limitation notices -->
+          <div class="ingestion-notice warning" id="media-limitation-notice" style="display:none;">
+            ⚠ <strong>Media not included:</strong> Uploaded files cannot include evidence photos or videos.
+            Media file references in complaint records are noted but the files are not uploaded or inspected.
+            Do not expect photo evidence to be available after ingestion.
+          </div>
+
+          <!-- Footer actions -->
+          <div class="ingestion-footer-actions">
+            <button type="button" id="btn-ingest-proceed" class="btn btn-primary" disabled
+                    aria-label="Process preview data and replace active report">
+              Process &amp; Replace Report
+            </button>
+            <button type="button" id="btn-ingest-cancel" class="btn btn-outline">
+              Cancel
+            </button>
+            <span id="ingestion-proceed-hint" class="ingestion-status" style="margin-left:0; text-align:left; font-size:0.75rem;">
+              Review the preview above before proceeding.
+            </span>
+          </div>
+        </div><!-- #ingestion-preview-section -->
+      </div><!-- .ingestion-panel -->
+    </div><!-- #page-ingestion -->
+
   </main>
+
+  <!-- ======================================================================
+       Site Footer
+       ====================================================================== -->
+  <footer class="site-footer" role="contentinfo">
+    <nav class="footer-nav" aria-label="Footer navigation">
+      <a href="#page-overview" class="footer-link" data-page="overview">OMNI-GRID</a>
+      <a href="#page-proofoffix" class="footer-link" data-page="proofoffix">TRUST &amp; VERIFICATION</a>
+    </nav>
+    <div class="footer-nav">
+      <span class="footer-link" aria-label="Demo type indicator" id="footer-demo-mode">REAL SAMPLE</span>
+      <span class="footer-link" data-page="ingestion" style="cursor:pointer;">SYNTHETIC SCENARIOS</span>
+    </div>
+    <span class="footer-copy">OMNI-GRID / 2026</span>
+  </footer>
+
+  <!-- ======================================================================
+       AI AUDITOR MODAL
+       ====================================================================== -->
+  <div id="auditor-modal" class="modal-overlay hidden" role="dialog"
+       aria-modal="true" aria-labelledby="auditor-modal-title" aria-describedby="auditor-modal-desc">
+    <div class="modal-panel" id="auditor-modal-panel" tabindex="-1">
+
+      <div class="modal-header">
+        <div>
+          <h2 id="auditor-modal-title">AI Closure Auditor</h2>
+          <p id="auditor-modal-desc">
+            Simulates the canonical Omni-Grid verification pipeline on illustrative scenarios.
+            Each scenario runs the actual deterministic proof-of-fix checks.
+          </p>
+        </div>
+        <button type="button" class="modal-close" id="btn-close-auditor"
+                aria-label="Close AI Auditor">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Scenario selection -->
+        <div class="briefing-section-label" style="margin-bottom:0.65rem;">
+          SELECT SCENARIO
+        </div>
+        <div class="scenario-grid" role="list" aria-label="Audit scenarios">
+
+          <div class="scenario-card" role="listitem" tabindex="0"
+               data-scenario="geofence" aria-selected="false"
+               aria-label="Geofence spoofing scenario">
+            <div class="scenario-icon" aria-hidden="true">📍</div>
+            <div class="scenario-title">Geofence Spoofing</div>
+            <div class="scenario-desc">Closure photo taken far from the reported location.</div>
+          </div>
+
+          <div class="scenario-card" role="listitem" tabindex="0"
+               data-scenario="mismatch" aria-selected="false"
+               aria-label="Defect-class mismatch scenario">
+            <div class="scenario-icon" aria-hidden="true">🔀</div>
+            <div class="scenario-title">Defect-class Mismatch</div>
+            <div class="scenario-desc">Photo shows a different defect type than reported.</div>
+          </div>
+
+          <div class="scenario-card" role="listitem" tabindex="0"
+               data-scenario="hash" aria-selected="false"
+               aria-label="Reused evidence perceptual-hash match scenario">
+            <div class="scenario-icon" aria-hidden="true">🔁</div>
+            <div class="scenario-title">Reused Evidence / Hash Match</div>
+            <div class="scenario-desc">Identical or near-identical image hash detected across multiple closures in this dataset.</div>
+          </div>
+
+          <div class="scenario-card" role="listitem" tabindex="0"
+               data-scenario="genuine" aria-selected="false"
+               aria-label="Genuine repair scenario">
+            <div class="scenario-icon" aria-hidden="true">✅</div>
+            <div class="scenario-title">Genuine Repair</div>
+            <div class="scenario-desc">All checks pass; closure is supported by consistent evidence.</div>
+          </div>
+
+        </div>
+
+        <!-- Run button -->
+        <div style="margin: 0.85rem 0;">
+          <button type="button" id="btn-run-audit" class="btn btn-primary" disabled>
+            Run Audit Pipeline
+          </button>
+          <span id="audit-run-hint" style="margin-left:0.5rem; font-size:0.75rem; color:var(--text-muted);">
+            Select a scenario above to continue.
+          </span>
+        </div>
+
+        <!-- Results (hidden until run) -->
+        <div id="auditor-results" class="auditor-results" aria-live="polite">
+
+          <!-- Before / After evidence -->
+          <div class="briefing-section-label" style="margin-bottom:0.5rem;">EVIDENCE</div>
+          <div class="auditor-evidence-row">
+            <div>
+              <div class="evidence-panel-label">BEFORE (DEFECT PHOTO)</div>
+              <div class="evidence-panel-img" id="auditor-before-img"
+                   role="img" aria-label="Before evidence placeholder">
+                Synthetic placeholder — no real photo
+              </div>
+            </div>
+            <div>
+              <div class="evidence-panel-label">AFTER (CLOSURE PHOTO)</div>
+              <div class="evidence-panel-img" id="auditor-after-img"
+                   role="img" aria-label="After evidence placeholder">
+                Synthetic placeholder — no real photo
+              </div>
+            </div>
+          </div>
+
+          <!-- Checks table -->
+          <div class="briefing-section-label" style="margin-bottom:0.5rem;">VERIFICATION CHECKS</div>
+          <div style="overflow-x:auto;">
+            <table class="checks-table" id="auditor-checks-table" aria-label="Verification checks results">
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Result</th>
+                  <th>Measured Value</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody id="auditor-checks-tbody"></tbody>
+            </table>
+          </div>
+
+          <!-- Verdict -->
+          <div class="auditor-verdict-row" id="auditor-verdict-row">
+            <span class="auditor-verdict-label">Overall Verdict:</span>
+            <span id="auditor-verdict-badge" class="badge">—</span>
+            <span class="auditor-confidence" id="auditor-confidence"></span>
+          </div>
+
+          <!-- Human review guidance -->
+          <div class="human-review-box" id="auditor-review-guidance" role="note">
+            <strong>Human Review Guidance:</strong>
+            <span id="auditor-review-text"></span>
+          </div>
+
+          <!-- Disclaimer -->
+          <div class="auditor-disclaimer" role="note">
+            <strong>Note on perceptual-hash check:</strong>
+            This check detects duplicate or near-duplicate file hashes within complaints in this
+            dataset — it does not search the public web, stock photo libraries, or any external service.
+            All checks are deterministic; no images are sent to external models in this simulation.
+          </div>
+
+        </div><!-- #auditor-results -->
+      </div><!-- .modal-body -->
+    </div><!-- .modal-panel -->
+  </div><!-- #auditor-modal -->
 
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
           crossorigin=""></script>
-          
+
   <!-- Application Entry Point -->
   <script src="js/app.js"></script>
 </body>
