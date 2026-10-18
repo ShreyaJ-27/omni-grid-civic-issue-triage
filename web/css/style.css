@@ -156,6 +156,35 @@ h1 {
   opacity: 0.65;
 }
 
+.action-btn.is-loading::before {
+  content: "";
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.5rem;
+  vertical-align: -0.08rem;
+  border: 2px solid rgb(255 255 255 / 0.45);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.retry-btn {
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 0.3rem 0.65rem;
+  color: #fef3c7;
+  background: transparent;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: rgb(252 211 77 / 0.15);
+}
+
 .upload-control {
   color: var(--text-muted);
 }
@@ -302,6 +331,54 @@ select:focus, input[type="text"]:focus {
 }
 
 /* Claims Section */
+.welcome-state {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.welcome-icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgb(59 130 246 / 0.4);
+  border-radius: 50%;
+  color: #93c5fd;
+  background: rgb(59 130 246 / 0.12);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.welcome-state h2 {
+  max-width: 26rem;
+  font-size: 1.3rem;
+  font-weight: 650;
+}
+
+.welcome-state > p {
+  max-width: 30rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.welcome-state .welcome-demo-btn {
+  margin-top: 0.25rem;
+  padding: 0.75rem 1.1rem;
+  font-size: 0.95rem;
+}
+
+.welcome-state .welcome-upload-hint {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+}
+
 .claim-card {
   background: var(--bg-dark);
   border: 1px solid var(--border);
@@ -559,6 +636,11 @@ select:focus, input[type="text"]:focus {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 1rem auto;
+}
+
+.loading-message p {
+  max-width: 30rem;
+  margin: 0 auto;
 }
 
 @keyframes spin {

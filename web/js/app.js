@@ -6,6 +6,8 @@
 // Application state
 const state = {
   report: null,
+  requestInProgress: false,
+  lastRequest: null,
   map: null,
   mapLayers: {
     hotspots: null,
@@ -71,14 +73,19 @@ function resolveMediaPath(rawPath) {
 }
 
 // App Initialization
-async function initApp() {
+function initApp() {
   setupTabs();
   setupFilterControls();
-  state.report = { hotspots: [], verdicts: [], claims: [], stats: {}, complaints: [] };
+  clearReport();
   initOrUpdateMap();
   setApiStatus("Run the checked-in synthetic complaints through the live API, or upload a GeoJSON file.");
   document.getElementById("btn-run-demo").addEventListener("click", () => {
     requestReport("/demo", null);
+  });
+  document.getElementById("claims-list-container").addEventListener("click", event => {
+    if (event.target.closest("[data-run-demo]")) {
+      requestReport("/demo", null);
+    }
   });
   document.getElementById("geojson-upload").addEventListener("change", event => {
     const file = event.target.files[0];
@@ -92,11 +99,22 @@ function setApiStatus(message, status = "idle") {
   statusElement.dataset.state = status;
   const banner = document.getElementById("banner-notice");
   banner.classList.toggle("active", status === "error");
-  banner.querySelector("span").textContent = status === "error" ? message : "";
+  banner.replaceChildren();
+  if (status === "error") {
+    banner.appendChild(createElem("span", [], message));
+    if (state.lastRequest) {
+      const retryButton = createElem("button", ["retry-btn"], "Retry");
+      retryButton.type = "button";
+      retryButton.addEventListener("click", () => {
+        requestReport(state.lastRequest.endpoint, state.lastRequest.file);
+      });
+      banner.appendChild(retryButton);
+    }
+  }
 }
 
 function clearReport() {
-  state.report = { hotspots: [], verdicts: [], claims: [], stats: {}, complaints: [] };
+  state.report = null;
   state.verdictsMap.clear();
   state.complaintsMap.clear();
   state.markersMap.clear();
@@ -109,18 +127,11 @@ function clearReport() {
   setText("stat-verified-closures", "—");
   if (state.mapLayers.hotspots) state.mapLayers.hotspots.clearLayers();
   if (state.mapLayers.complaints) state.mapLayers.complaints.clearLayers();
-  for (const id of [
-    "claims-list-container",
-    "hotspots-list-container",
-    "complaints-list-container"
-  ]) {
-    document.getElementById(id).replaceChildren(
-      createElem("div", ["state-message"], "Waiting for an API report.")
-    );
-  }
-  document.getElementById("inspection-detail-container").replaceChildren(
-    createElem("div", ["state-message"], "Run a demo or upload GeoJSON to inspect evidence.")
-  );
+  if (state.map) state.map.setView([12.9716, 77.5946], 12);
+  renderSummaryClaims();
+  renderHotspotsList();
+  renderComplaintsList();
+  renderInspectionEmptyState();
 }
 
 function validateReport(data) {
@@ -149,6 +160,9 @@ function validateReport(data) {
 }
 
 function apiErrorMessage(error) {
+  if (!(error instanceof Error)) {
+    return "The API request failed unexpectedly. Please retry.";
+  }
   if (error.name === "AbortError") {
     return "The request timed out while the service was starting or processing. Please retry.";
   }
@@ -164,12 +178,21 @@ function apiErrorMessage(error) {
 }
 
 async function requestReport(endpoint, file) {
+  if (state.requestInProgress) return;
+  state.requestInProgress = true;
+  state.lastRequest = { endpoint, file };
   const demoButton = document.getElementById("btn-run-demo");
   const fileInput = document.getElementById("geojson-upload");
   demoButton.disabled = true;
+  demoButton.setAttribute("aria-busy", "true");
+  demoButton.classList.add("is-loading");
+  demoButton.textContent = "Processing…";
   fileInput.disabled = true;
   clearReport();
-  setApiStatus("Contacting the API. A free service may take up to three minutes to wake.", "loading");
+  document.getElementById("claims-list-container").replaceChildren(
+    createLoadingMessage("Processing complaints. The service may take up to three minutes to wake and complete processing.")
+  );
+  setApiStatus("Processing your dataset. A free service may take up to three minutes to wake and complete processing.", "loading");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 180000);
   try {
@@ -216,10 +239,22 @@ async function requestReport(endpoint, file) {
     setApiStatus(apiErrorMessage(error), "error");
   } finally {
     clearTimeout(timeout);
+    state.requestInProgress = false;
     demoButton.disabled = false;
+    demoButton.removeAttribute("aria-busy");
+    demoButton.classList.remove("is-loading");
+    demoButton.textContent = "Run Synthetic Demo";
     fileInput.disabled = false;
     fileInput.value = "";
   }
+}
+
+function createLoadingMessage(message) {
+  const loading = createElem("div", ["state-message", "loading-message"]);
+  loading.setAttribute("role", "status");
+  loading.appendChild(createElem("div", ["state-spinner"]));
+  loading.appendChild(createElem("p", [], message));
+  return loading;
 }
 
 function loadReport(data) {
@@ -324,6 +359,31 @@ function renderSummaryClaims() {
   if (!container) return;
   container.replaceChildren();
 
+  if (!state.report) {
+    const welcome = createElem("section", ["welcome-state"]);
+    welcome.setAttribute("aria-labelledby", "welcome-heading");
+    welcome.appendChild(createElem("div", ["welcome-icon"], "⌖"));
+    welcome.lastChild.setAttribute("aria-hidden", "true");
+    welcome.appendChild(createElem("h2", [], "Ready to analyze civic complaints?"));
+    welcome.lastChild.id = "welcome-heading";
+    welcome.appendChild(createElem(
+      "p",
+      [],
+      "Omni-Grid processes complaint data, identifies geographic hotspots, and helps review evidence and closure claims."
+    ));
+    const demoButton = createElem("button", ["action-btn", "welcome-demo-btn"], "Run Synthetic Demo");
+    demoButton.type = "button";
+    demoButton.dataset.runDemo = "";
+    welcome.appendChild(demoButton);
+    welcome.appendChild(createElem(
+      "p",
+      ["welcome-upload-hint"],
+      "Have a dataset? Use “Or upload GeoJSON” above to process a supported GeoJSON file."
+    ));
+    container.appendChild(welcome);
+    return;
+  }
+
   const claims = state.report.claims || [];
   if (claims.length === 0) {
     const empty = createElem("div", ["state-message"], "No summary claims available in this report.");
@@ -380,6 +440,15 @@ function renderHotspotsList() {
   const container = document.getElementById("hotspots-list-container");
   if (!container) return;
   container.replaceChildren();
+
+  if (!state.report) {
+    container.appendChild(createElem(
+      "div",
+      ["state-message"],
+      "Hotspot analysis will appear after a dataset is processed."
+    ));
+    return;
+  }
 
   const hotspots = state.report.hotspots || [];
   if (hotspots.length === 0) {
@@ -511,6 +580,15 @@ function renderFilteredComplaints(allowedIdSet = null) {
   if (!container) return;
   container.replaceChildren();
 
+  if (!state.report) {
+    container.appendChild(createElem(
+      "div",
+      ["state-message"],
+      "Complaints will appear here after a dataset is processed."
+    ));
+    return;
+  }
+
   const allComplaints = state.report.complaints || [];
   const filtered = allComplaints.filter(c => {
     if (allowedIdSet && !allowedIdSet.has(c.id)) return false;
@@ -530,7 +608,10 @@ function renderFilteredComplaints(allowedIdSet = null) {
   });
 
   if (filtered.length === 0) {
-    const empty = createElem("div", ["state-message"], "No complaints match current filters.");
+    const message = allComplaints.length === 0
+      ? "No complaints are available in this report."
+      : "No complaints match current filters.";
+    const empty = createElem("div", ["state-message"], message);
     container.appendChild(empty);
     return;
   }
@@ -577,6 +658,15 @@ function renderFilteredComplaints(allowedIdSet = null) {
 // ---------------------------------------------------------------------------
 // Inspection / Repair Checks View
 // ---------------------------------------------------------------------------
+function renderInspectionEmptyState() {
+  const container = document.getElementById("inspection-detail-container");
+  if (!container) return;
+  const message = state.report
+    ? "Select a complaint on the map or from the Complaints tab to view its verification checks and photo evidence."
+    : "Verification results will appear here after a dataset is processed.";
+  container.replaceChildren(createElem("div", ["state-message"], message));
+}
+
 function selectComplaint(complaintId) {
   state.selectedComplaintId = complaintId;
 
@@ -821,7 +911,7 @@ function renderMapOverlays() {
   let hasValidCoords = false;
 
   // 1. Hotspot Circles
-  const hotspots = state.report.hotspots || [];
+  const hotspots = state.report?.hotspots || [];
   hotspots.forEach(h => {
     if (!h.centroid || !isValidCoord(h.centroid[0], h.centroid[1])) return;
     const lat = h.centroid[0];
@@ -859,7 +949,7 @@ function renderMapOverlays() {
   });
 
   // 2. Complaint Markers
-  const complaints = state.report.complaints || [];
+  const complaints = state.report?.complaints || [];
   complaints.forEach(c => {
     if (!isValidCoord(c.lat, c.lon)) return;
     hasValidCoords = true;
@@ -920,14 +1010,14 @@ function renderMapOverlays() {
 }
 
 function updateMapMarkersVisibility() {
-  const complaints = state.report.complaints || [];
+  const complaints = state.report?.complaints || [];
   complaints.forEach(c => {
     const marker = state.markersMap.get(c.id);
     if (!marker) return;
 
     let visible = true;
     if (state.selectedHotspotId) {
-      const hotspot = (state.report.hotspots || []).find(h => h.id === state.selectedHotspotId);
+      const hotspot = (state.report?.hotspots || []).find(h => h.id === state.selectedHotspotId);
       if (hotspot && !hotspot.complaint_ids.includes(c.id)) visible = false;
     }
     if (visible && state.filterStatus !== "all" && c.status !== state.filterStatus) visible = false;

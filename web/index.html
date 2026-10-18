@@ -39,7 +39,7 @@
         <div class="stat-item">
           <span class="stat-label">Verified Closures</span>
           <span class="stat-value verified" id="stat-verified-closures">—</span>
-        </div>
+        </section>
       </div>
     </div>
   </header>
@@ -117,39 +117,34 @@
       <!-- Tab 1: Validated Summary Claims -->
       <div id="tab-claims" class="tab-content active" role="tabpanel">
         <div id="claims-list-container">
-          <div class="state-message">
-            <div class="state-spinner"></div>
-            Loading summary claims...
-          </div>
+          <section class="welcome-state" aria-labelledby="welcome-heading">
+            <div class="welcome-icon" aria-hidden="true">⌖</div>
+            <h2 id="welcome-heading">Ready to analyze civic complaints?</h2>
+            <p>Omni-Grid processes complaint data, identifies geographic hotspots, and helps review evidence and closure claims.</p>
+            <button type="button" class="action-btn welcome-demo-btn" data-run-demo>Run Synthetic Demo</button>
+            <p class="welcome-upload-hint">Have a dataset? Use “Or upload GeoJSON” above to process a supported GeoJSON file.</p>
+          </section>
         </div>
       </div>
 
       <!-- Tab 2: Hotspot Clusters -->
       <div id="tab-hotspots" class="tab-content" role="tabpanel">
         <div id="hotspots-list-container">
-          <div class="state-message">
-            <div class="state-spinner"></div>
-            Loading hotspots...
-          </div>
+          <div class="state-message">Hotspot analysis will appear after a dataset is processed.</div>
         </div>
       </div>
 
       <!-- Tab 3: Filtered Complaints List -->
       <div id="tab-complaints" class="tab-content" role="tabpanel">
         <div id="complaints-list-container">
-          <div class="state-message">
-            <div class="state-spinner"></div>
-            Loading complaints...
-          </div>
+          <div class="state-message">Complaints will appear here after a dataset is processed.</div>
         </div>
       </div>
 
       <!-- Tab 4: Inspection & Repair Checks Drawer -->
       <div id="tab-inspection" class="tab-content" role="tabpanel">
         <div id="inspection-detail-container">
-          <div class="state-message">
-            Select a complaint on the map or from the Complaints tab to view its verification checks, EXIF GPS distance, and photo evidence.
-          </div>
+          <div class="state-message">Verification results will appear here after a dataset is processed.</div>
         </div>
       </div>
     </section>
