@@ -36,7 +36,11 @@ RATE_LIMIT_WINDOW_SECONDS = 60
 TRIAGE_PATH = "/triage"
 DEMO_PATH = "/demo"
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
-DEMO_INPUT_PATH = REPOSITORY_ROOT / "data" / "synthetic" / "complaints.geojson"
+REAL_DEMO_INPUT_PATH = REPOSITORY_ROOT / "data" / "real_sample_500.geojson"
+SYNTHETIC_DEMO_INPUT_PATH = (
+    REPOSITORY_ROOT / "data" / "synthetic" / "complaints.geojson"
+)
+DEMO_INPUT_PATH = REAL_DEMO_INPUT_PATH
 WEB_DIRECTORY = REPOSITORY_ROOT / "web"
 SUPPORTED_CONTENT_TYPES = {
     "application/geo+json",
@@ -201,20 +205,10 @@ async def health() -> HealthResponse:
     return HealthResponse(status="ok", service="omnigrid-api")
 
 
-@app.post(
-    DEMO_PATH,
-    response_model=Report,
-    summary="Run the checked-in synthetic demo",
-    responses={
-        429: {"description": "Demo request rate limit exceeded."},
-        503: {"description": "Pipeline capacity is temporarily exhausted."},
-    },
-)
-async def run_demo(request: Request) -> Report:
-    """Run the canonical pipeline on the repository's synthetic fixture."""
+async def _execute_demo_pipeline(request: Request, input_path: Path) -> Report:
     _check_rate_limit(request)
     try:
-        report = await _run_bounded_pipeline(DEMO_INPUT_PATH)
+        report = await _run_bounded_pipeline(input_path)
         report.stats["api_demo_media"] = True
         return report
     except HTTPException:
@@ -226,8 +220,82 @@ async def run_demo(request: Request) -> Report:
         )
         raise HTTPException(
             status_code=500,
-            detail="The synthetic demo failed unexpectedly. Try again later.",
+            detail="The demo failed unexpectedly. Try again later.",
         ) from exc
+
+
+@app.get(
+    DEMO_PATH,
+    response_model=Report,
+    summary="Run demo pipeline",
+    responses={
+        429: {"description": "Demo request rate limit exceeded."},
+        503: {"description": "Pipeline capacity is temporarily exhausted."},
+    },
+)
+@app.post(
+    DEMO_PATH,
+    response_model=Report,
+    summary="Run demo pipeline",
+    responses={
+        429: {"description": "Demo request rate limit exceeded."},
+        503: {"description": "Pipeline capacity is temporarily exhausted."},
+    },
+)
+async def run_demo(request: Request, dataset: str = "real") -> Report:
+    """Run the canonical pipeline on the real or synthetic dataset."""
+    target = (
+        SYNTHETIC_DEMO_INPUT_PATH
+        if dataset.strip().lower() == "synthetic"
+        else REAL_DEMO_INPUT_PATH
+    )
+    return await _execute_demo_pipeline(request, target)
+
+
+@app.get(
+    "/demo/real",
+    response_model=Report,
+    summary="Run real Bengaluru demo pipeline",
+    responses={
+        429: {"description": "Demo request rate limit exceeded."},
+        503: {"description": "Pipeline capacity is temporarily exhausted."},
+    },
+)
+@app.post(
+    "/demo/real",
+    response_model=Report,
+    summary="Run real Bengaluru demo pipeline",
+    responses={
+        429: {"description": "Demo request rate limit exceeded."},
+        503: {"description": "Pipeline capacity is temporarily exhausted."},
+    },
+)
+async def run_real_demo(request: Request) -> Report:
+    """Run the canonical pipeline on the real Bengaluru sample fixture."""
+    return await _execute_demo_pipeline(request, REAL_DEMO_INPUT_PATH)
+
+
+@app.get(
+    "/demo/synthetic",
+    response_model=Report,
+    summary="Run synthetic demo pipeline",
+    responses={
+        429: {"description": "Demo request rate limit exceeded."},
+        503: {"description": "Pipeline capacity is temporarily exhausted."},
+    },
+)
+@app.post(
+    "/demo/synthetic",
+    response_model=Report,
+    summary="Run synthetic demo pipeline",
+    responses={
+        429: {"description": "Demo request rate limit exceeded."},
+        503: {"description": "Pipeline capacity is temporarily exhausted."},
+    },
+)
+async def run_synthetic_demo(request: Request) -> Report:
+    """Run the canonical pipeline on the synthetic fixture."""
+    return await _execute_demo_pipeline(request, SYNTHETIC_DEMO_INPUT_PATH)
 
 
 @app.post(
