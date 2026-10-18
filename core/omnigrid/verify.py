@@ -385,10 +385,14 @@ def check_duplicate_evidence(
             value=None,
         )
 
-    complaint_id = _get_prop(complaint, "id", "")
+    complaint_id = (
+        _get_prop(complaint, "id") or _get_prop(complaint, "complaint_id", "")
+    )
 
     # 1. Compare against complaint's own initial media (detect recycled ticket photo)
-    init_media = _get_prop(complaint, "media", [])
+    init_media = (
+        _get_prop(complaint, "media", []) or _get_prop(complaint, "evidence", [])
+    )
     for m in init_media:
         m_path = _get_prop(m, "path")
         if m_path:
@@ -427,7 +431,7 @@ def check_duplicate_evidence(
 
     if all_complaints:
         for other in all_complaints:
-            other_id = _get_prop(other, "id", "")
+            other_id = _get_prop(other, "id") or _get_prop(other, "complaint_id", "")
             if other_id == complaint_id:
                 continue
 
@@ -439,7 +443,10 @@ def check_duplicate_evidence(
             if not other_closure:
                 continue
 
-            other_media = _get_prop(other_closure, "media", [])
+            other_media = (
+                _get_prop(other_closure, "media", [])
+                or _get_prop(other_closure, "evidence", [])
+            )
             for om in other_media:
                 om_path = _get_prop(om, "path")
                 if om_path:
@@ -814,7 +821,7 @@ def verify_closure(
     strict_media_paths: bool = False,
 ) -> Verdict:
     """Run deterministic and optional vision Proof-of-Fix checks on a complaint."""
-    cid = _get_prop(complaint, "id", "unknown")
+    cid = _get_prop(complaint, "id") or _get_prop(complaint, "complaint_id", "unknown")
     status = _get_prop(complaint, "status", "")
 
     # Non-closed complaints are inconclusive
@@ -849,7 +856,7 @@ def verify_closure(
             confidence=0.20,
         )
 
-    media_list = _get_prop(closure, "media", [])
+    media_list = _get_prop(closure, "media", []) or _get_prop(closure, "evidence", [])
     if not media_list:
         return Verdict(
             complaint_id=cid,
@@ -954,7 +961,9 @@ def verify_closure(
 
     # Execute vision check if requested
     if use_vision:
-        init_media = _get_prop(complaint, "media", [])
+        init_media = (
+            _get_prop(complaint, "media", []) or _get_prop(complaint, "evidence", [])
+        )
         orig_path = None
         for m in init_media:
             p = _get_prop(m, "path")

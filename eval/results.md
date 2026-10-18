@@ -1,8 +1,8 @@
 # Omni-Grid Civic Issue Triage - Benchmark Evaluation Report
 
 ## 1. Run Metadata
-- **Evaluation Date**: 2026-10-17 16:11:48 UTC
-- **Git Commit Hash**: `e66494b`
+- **Evaluation Date**: 2026-10-18 06:24:04 UTC
+- **Git Commit Hash**: `9f9d055`
 - **Dataset Input**: `complaints.geojson` (500 complaints: 400 open, 100 closed)
 - **Media References**: 15 files (15 valid evidence items decoded)
 - **Execution Mode**: mock model (100% deterministic & offline reproducible)
@@ -20,7 +20,7 @@
 | **Proof-of-Fix Verifier** | Suspect Recall | **100.0%** (5/5) | 5 planted suspicious closures | **PASS** |
 | **Proof-of-Fix Verifier** | F1-Score | **1.000** | Balanced quality target >= 0.90 | **PASS** |
 | **Summary Citations** | Citation Validity Rate | **100.0%** (1/1) | 100% cited complaint IDs genuinely exist | **PASS** |
-| **Pipeline Latency** | End-to-End Latency | **0.82 s** | Sub-minute automated triage | **PASS** |
+| **Pipeline Latency** | End-to-End Latency | **0.46 s** | Sub-minute automated triage | **PASS** |
 
 ---
 
@@ -28,12 +28,12 @@
 
 | Pipeline Stage | Wall-Clock Runtime (s) | Description |
 |----------------|------------------------|-------------|
-| **Ingest** | 0.011 | GeoJSON parsing, schema validation |
-| **Evidence Extraction** | 0.172 | EXIF GPS, timestamp, pHash computation |
-| **Spatial Clustering** | 0.018 | Haversine DBSCAN & severity scoring |
-| **Closure Verification** | 0.244 | Multi-layered deterministic checks |
-| **Summary Generation** | 0.001 | Numeric & citation-checked claim synthesis |
-| **Total End-to-End** | **0.823** | Full pipeline end-to-end execution |
+| **Ingest** | 0.005 | GeoJSON parsing, schema validation |
+| **Evidence Extraction** | 0.065 | EXIF GPS, timestamp, pHash computation |
+| **Spatial Clustering** | 0.004 | Haversine DBSCAN & severity scoring |
+| **Closure Verification** | 0.133 | Multi-layered deterministic checks |
+| **Summary Generation** | 0.000 | Numeric & citation-checked claim synthesis |
+| **Total End-to-End** | **0.460** | Full pipeline end-to-end execution |
 
 ---
 
