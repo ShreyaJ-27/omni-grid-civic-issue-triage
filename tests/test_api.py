@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import threading
@@ -50,6 +51,7 @@ def _upload(
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("LLM_MOCK", "true")
+    api_main._rate_limit_buckets.clear()
     return TestClient(api_main.app)
 
 
@@ -60,6 +62,33 @@ def test_health_reports_only_api_process_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok", "service": "omnigrid-api"}
     assert "provider" not in response.json()
     assert "api_key" not in response.json()
+
+
+def test_dashboard_is_served_from_the_api_origin(client: TestClient) -> None:
+    response = client.get("/")
+    script_response = client.get("/js/app.js")
+
+    assert response.status_code == 200
+    assert 'id="btn-run-demo"' in response.text
+    assert "Run Synthetic Demo" in response.text
+    assert script_response.status_code == 200
+    assert 'requestReport("/demo", null)' in script_response.text
+
+
+def test_demo_endpoint_runs_checked_in_fixture_through_canonical_pipeline(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_MOCK", "false")
+    response = client.post("/demo")
+
+    assert response.status_code == 200
+    report = Report.model_validate(response.json())
+    assert len(report.complaints) == 500
+    assert len(report.hotspots) == 5
+    assert report.stats["model_mode"] == "mock"
+    assert report.stats["model_inference_used"] is False
+    assert report.stats["api_demo_media"] is True
 
 
 def test_valid_upload_returns_schema_valid_report(client: TestClient) -> None:
@@ -196,6 +225,49 @@ def test_empty_feature_collection_is_rejected(client: TestClient) -> None:
     assert "at least one" in response.json()["detail"]
 
 
+def test_feature_collection_limit_is_enforced(client: TestClient) -> None:
+    data = {
+        "type": "FeatureCollection",
+        "features": [GEOJSON["features"][0]] * (api_main.MAX_FEATURES + 1),
+    }
+
+    response = client.post("/triage", files=_upload(data))
+
+    assert response.status_code == 413
+    assert "cannot contain more than" in response.json()["detail"]
+
+
+def test_pipeline_concurrency_saturation_returns_service_unavailable(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(api_main, "_pipeline_semaphore", asyncio.Semaphore(0))
+
+    response = client.post("/triage", files=_upload())
+
+    assert response.status_code == 503
+
+
+def test_rate_limit_returns_429(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = Report(
+        hotspots=[],
+        verdicts=[],
+        claims=[],
+        stats={"model_mode": "mock"},
+        complaints=[],
+    )
+    monkeypatch.setattr(api_main, "_run_pipeline", lambda *_, **__: report)
+    monkeypatch.setattr(api_main, "RATE_LIMIT_REQUESTS", 1)
+
+    assert client.post("/demo").status_code == 200
+    response = client.post("/demo")
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "60"
+
 def test_unsupported_media_type_is_rejected(client: TestClient) -> None:
     response = client.post(
         "/triage",
@@ -292,8 +364,14 @@ def test_unexpected_pipeline_error_is_safe_and_cleans_media_directory(
     seen_root: list[Path] = []
     private_message = "PRIVATE complaint text and /server/private/path"
 
-    def fail_pipeline(source: object, *, media_root: str) -> Report:
+    def fail_pipeline(
+        source: object,
+        *,
+        media_root: str,
+        mock: bool,
+    ) -> Report:
         assert source == GEOJSON
+        assert mock is True
         seen_root.append(Path(media_root))
         raise RuntimeError(private_message)
 
@@ -326,8 +404,14 @@ def test_concurrent_requests_use_distinct_temporary_directories(
         complaints=[],
     )
 
-    def fake_pipeline(source: object, *, media_root: str) -> Report:
+    def fake_pipeline(
+        source: object,
+        *,
+        media_root: str,
+        mock: bool,
+    ) -> Report:
         assert source == GEOJSON
+        assert mock is True
         path = Path(media_root)
         assert path.is_dir()
         with lock:

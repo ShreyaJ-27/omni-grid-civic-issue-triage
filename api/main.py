@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import tempfile
+import time
 import uuid
-from pathlib import PurePath, PureWindowsPath
+from collections import deque
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
@@ -25,7 +29,15 @@ logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 64 * 1024
+MAX_FEATURES = 1000
+MAX_PIPELINE_CONCURRENCY = 2
+RATE_LIMIT_REQUESTS = 30
+RATE_LIMIT_WINDOW_SECONDS = 60
 TRIAGE_PATH = "/triage"
+DEMO_PATH = "/demo"
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+DEMO_INPUT_PATH = REPOSITORY_ROOT / "data" / "synthetic" / "complaints.geojson"
+WEB_DIRECTORY = REPOSITORY_ROOT / "web"
 SUPPORTED_CONTENT_TYPES = {
     "application/geo+json",
     "application/json",
@@ -115,12 +127,64 @@ class RequestSizeLimitMiddleware:
 app = FastAPI(
     title="Omni-Grid Triage API",
     description=(
-        "Local, optional HTTP access to the canonical Omni-Grid complaint "
-        "triage pipeline. Model providers are configured server-side."
+        "Same-origin synthetic demo dashboard and HTTP access to the canonical "
+        "Omni-Grid complaint triage pipeline."
     ),
     version="0.1.0",
 )
 app.add_middleware(RequestSizeLimitMiddleware)
+_pipeline_semaphore = asyncio.Semaphore(MAX_PIPELINE_CONCURRENCY)
+_rate_limit_buckets: dict[str, deque[float]] = {}
+
+
+def _check_rate_limit(request: Request) -> None:
+    now = time.monotonic()
+    client_host = request.client.host if request.client else "unknown"
+    bucket = _rate_limit_buckets.get(client_host)
+    if bucket is None:
+        if len(_rate_limit_buckets) >= 256:
+            _rate_limit_buckets.pop(next(iter(_rate_limit_buckets)))
+        bucket = deque()
+        _rate_limit_buckets[client_host] = bucket
+    while bucket and now - bucket[0] >= RATE_LIMIT_WINDOW_SECONDS:
+        bucket.popleft()
+    if len(bucket) >= RATE_LIMIT_REQUESTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many demo requests. Please wait before trying again.",
+            headers={"Retry-After": str(RATE_LIMIT_WINDOW_SECONDS)},
+        )
+    bucket.append(now)
+
+
+async def _run_bounded_pipeline(source: object) -> Report:
+    if _pipeline_semaphore.locked():
+        raise HTTPException(
+            status_code=503,
+            detail="The triage service is busy. Please try again shortly.",
+            headers={"Retry-After": "5"},
+        )
+    await _pipeline_semaphore.acquire()
+    worker = asyncio.create_task(run_in_threadpool(_run_pipeline, source))
+    release_deferred = False
+    try:
+        return await asyncio.shield(worker)
+    except asyncio.CancelledError:
+        if worker.done():
+            if not worker.cancelled():
+                worker.exception()
+        else:
+            def release_after_worker(task: asyncio.Task[Report]) -> None:
+                if not task.cancelled():
+                    task.exception()
+                _pipeline_semaphore.release()
+
+            worker.add_done_callback(release_after_worker)
+            release_deferred = True
+        raise
+    finally:
+        if not release_deferred:
+            _pipeline_semaphore.release()
 
 
 @app.get(
@@ -135,6 +199,35 @@ app.add_middleware(RequestSizeLimitMiddleware)
 async def health() -> HealthResponse:
     """Return process health without probing downstream providers."""
     return HealthResponse(status="ok", service="omnigrid-api")
+
+
+@app.post(
+    DEMO_PATH,
+    response_model=Report,
+    summary="Run the checked-in synthetic demo",
+    responses={
+        429: {"description": "Demo request rate limit exceeded."},
+        503: {"description": "Pipeline capacity is temporarily exhausted."},
+    },
+)
+async def run_demo(request: Request) -> Report:
+    """Run the canonical pipeline on the repository's synthetic fixture."""
+    _check_rate_limit(request)
+    try:
+        report = await _run_bounded_pipeline(DEMO_INPUT_PATH)
+        report.stats["api_demo_media"] = True
+        return report
+    except HTTPException:
+        raise
+    except Exception as exc:
+        request_id = uuid.uuid4().hex
+        logger.error(
+            "Demo request %s failed with %s.", request_id, type(exc).__name__
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The synthetic demo failed unexpectedly. Try again later.",
+        ) from exc
 
 
 @app.post(
@@ -172,6 +265,7 @@ async def health() -> HealthResponse:
 )
 async def triage(request: Request) -> Report:
     """Validate an uploaded GeoJSON document and execute the shared pipeline."""
+    _check_rate_limit(request)
     request_id = uuid.uuid4().hex
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
     if content_type.lower() != "multipart/form-data":
@@ -247,7 +341,9 @@ async def triage(request: Request) -> Report:
         await form.close()
 
     try:
-        return await run_in_threadpool(_run_pipeline, geojson)
+        return await _run_bounded_pipeline(geojson)
+    except HTTPException:
+        raise
     except InputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -302,6 +398,11 @@ def _parse_and_validate_upload(
             raise InputError("GeoJSON FeatureCollection.features must be an array.")
         if not features:
             raise InputError("GeoJSON must contain at least one complaint feature.")
+        if len(features) > MAX_FEATURES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"GeoJSON cannot contain more than {MAX_FEATURES} features.",
+            )
 
     complaints = load_complaints(data)
     if not complaints:
@@ -345,6 +446,11 @@ def _has_unsafe_media_path(value: str) -> bool:
     )
 
 
-def _run_pipeline(geojson: object) -> Report:
+def _run_pipeline(geojson: object, *, mock: bool = True) -> Report:
+    if isinstance(geojson, Path):
+        return run_pipeline(geojson, mock=mock)
     with tempfile.TemporaryDirectory(prefix="omnigrid-api-media-") as media_root:
-        return run_pipeline(geojson, media_root=media_root)
+        return run_pipeline(geojson, media_root=media_root, mock=mock)
+
+
+app.mount("/", StaticFiles(directory=WEB_DIRECTORY, html=True), name="dashboard")

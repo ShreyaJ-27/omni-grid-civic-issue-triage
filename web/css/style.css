@@ -123,6 +123,61 @@ h1 {
   display: flex;
 }
 
+.demo-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.65rem 1.5rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.demo-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.action-btn {
+  border: 0;
+  border-radius: 5px;
+  padding: 0.55rem 0.9rem;
+  color: white;
+  background: var(--primary-light);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.action-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.upload-control {
+  color: var(--text-muted);
+}
+
+#geojson-upload {
+  max-width: 16rem;
+  color: var(--text-muted);
+}
+
+#api-status {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+#api-status[data-state="error"] {
+  color: #fecaca;
+}
+
+#api-status[data-state="success"] {
+  color: #a7f3d0;
+}
+
 /* Main Layout */
 main {
   flex: 1;
@@ -132,7 +187,7 @@ main {
   margin: 0 auto;
   padding: 1rem;
   gap: 1rem;
-  height: calc(100vh - 85px);
+  height: calc(100vh - 150px);
   overflow: hidden;
 }
 

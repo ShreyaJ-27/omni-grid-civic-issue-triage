@@ -1,13 +1,16 @@
-# Omni-Grid Web Landing Page & Interactive Map
+# Omni-Grid Dashboard
 
-This directory contains the static web frontend for Omni-Grid civic issue triage.
+This directory contains the static dashboard served alongside FastAPI in the
+hosted demo. The dashboard is publicly accessible without an account and uses
+the same-origin API; it does not load an exported report as a fallback.
 
 ## Features
-- **Data-Driven:** Loads an exported `Report` from `demo/report.json` via standard browser `fetch()`. The checked-in demo data is synthetic.
+- **Live API:** **Run Synthetic Demo** calls `POST /demo`; GeoJSON uploads call `POST /triage`. Both render the validated `Report` returned by the canonical pipeline.
+- **Explicit failure states:** Loading, empty, validation, rate-limit, service, and timeout states are shown. API failures never switch to stale JSON.
 - **Zero-Dependency Core:** Pure vanilla HTML5/ES6 without heavy frameworks.
-- **Interactive Leaflet Map:** Renders complaint markers and hotspot circle overlays with OpenStreetMap tiles.
-- **Fail-Safe Fallback:** If `demo/report.json` is missing or inaccessible (e.g. running via `file://`), the page falls back to an embedded sample dataset with a clear notification banner. The fallback is not current pipeline output.
-- **Proof-of-Fix Inspection:** Displays deterministic verification checks (GPS geofence, duplicate pHash, chronological timestamps, defect consistency) and evidence photo thumbnails.
+- **Interactive Leaflet Map:** Renders API-returned complaint markers and hotspot circle overlays with OpenStreetMap tiles.
+- **Offline report inspection:** `web/demo/report.json` remains an exporter-produced artifact and is not used by the hosted dashboard.
+- **Proof-of-Fix Inspection:** Displays available deterministic verification checks. Uploaded complaints do not include media files, so uploaded media references cannot be inspected.
 - **Summary Claims:** Surfaces validated narrative claims with clickable citation pills.
 
 ## Directory Structure
@@ -24,22 +27,30 @@ web/
     media/              # Local evidence photos for inspection
 ```
 
-## Running Locally
+The exported `demo/report.json` and local media are for the separate offline
+exporter workflow. The served dashboard does not load these files as a startup
+report or as a fallback after an API error.
 
-To serve the web interface locally, run Python's built-in HTTP server from the repository root:
+## Run the hosted-style dashboard locally
 
-```bash
-python -m http.server 8000 --directory web
+Install API and pipeline dependencies and start the combined service from the
+repository root:
+
+```powershell
+python -m pip install -e ".[api,pipeline]"
+$env:LLM_MOCK = "true"
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-Then open your browser to:
-[http://localhost:8000](http://localhost:8000)
-
-*(Note: Browsers block `fetch()` requests on the `file://` protocol due to CORS security policies; serving via a local HTTP server allows loading `demo/report.json` dynamically).*
+Open `http://127.0.0.1:8000`, run the synthetic demo, or select a `.geojson`
+or `.json` file. The public API runs in deterministic mock mode and accepts at
+most 2 MiB and 1,000 complaint features. The displayed data is synthetic and
+does not represent live municipal records.
 
 ## Refreshing Demo Data
 
-To regenerate `web/demo/report.json` and copy updated media assets from `data/synthetic/`:
+The offline exporter remains available separately to refresh
+`web/demo/report.json` and its referenced media:
 
 ```bash
 python scripts/export_demo_report.py

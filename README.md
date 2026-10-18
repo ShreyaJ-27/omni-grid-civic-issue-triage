@@ -19,6 +19,7 @@ validation, or production readiness is claimed.
 - [Repository map](#repository-map)
 - [Install and configure](#install-and-configure)
 - [Quickstart](#quickstart)
+- [Hosted dashboard and deployment](#hosted-dashboard-and-deployment)
 - [Use with an AI agent and an engineer](#use-with-an-ai-agent-and-an-engineer)
 - [Trust, verification, and limitations](#trust-verification-and-limitations)
 - [Synthetic evaluation](#synthetic-evaluation)
@@ -57,8 +58,8 @@ it does not demonstrate outcomes on real civic workflows.
 | Closure checks | Deterministic GPS geofence, duplicate-evidence, timestamp, and category-consistency checks. Missing or ambiguous evidence can be inconclusive. |
 | Optional inference | OpenAI-compatible text and vision requests for summaries, damage scoring, and comparable before/after images. Mock mode is offline and uses deterministic templates instead. |
 | Reports | A validated `Report` containing complaints, hotspots, verdicts, claims, and pipeline statistics. Summary claim citations and numeric tokens are checked against known IDs and supplied facts. |
-| Entry points | Python library, `omnigrid` CLI, skill wrappers, optional local FastAPI service, and a demo-report exporter that reuses the canonical pipeline. |
-| Browser demo | Static Leaflet map and report inspector that consumes exported JSON and its referenced local media. It is not a hosted dashboard or a live connection to municipal systems. |
+| Entry points | Python library, `omnigrid` CLI, portable Agent Skill, FastAPI service, same-origin dashboard, and offline demo-report exporter; pipeline routes use the canonical pipeline. |
+| Browser demo | Public, no-login Leaflet dashboard calls the API for a synthetic demo or GeoJSON upload. Offline exported JSON remains a separate artifact and is never a live-request fallback. |
 | Evaluation | Offline harness against checked-in synthetic complaints and planted ground truth. The published run is mock/deterministic; it is not a real-world accuracy study. |
 
 The `evidence`, `verify`, and `summarize` CLI subcommands validate existing
@@ -104,11 +105,12 @@ flowchart LR
 
   CLI["CLI / Python API"] --> Ingest
   Skill["Agent Skills contract and wrappers"] --> CLI
-  API["Optional localhost FastAPI upload"] --> Ingest
+  API["FastAPI /demo and /triage"] --> Ingest
   Report --> Export["Demo exporter (mock by default)"]
-  Export --> Web["Static web/demo report and media"]
+  Export --> OfflineWeb["Offline web/demo report and media"]
+  Dashboard["Same-origin Leaflet dashboard"] --> API
   Report --> Engineer["Engineer reviews evidence and checks"]
-  Web --> Engineer
+  OfflineWeb --> Engineer
 
   subgraph Eval["Separate offline evaluation path"]
     Synthetic["Synthetic complaints + media"] --> SharedPipeline["Canonical pipeline in mock mode"]
@@ -341,21 +343,21 @@ Without GNU Make, use:
 python scripts/export_demo_report.py
 ```
 
-To open the static frontend, start the local server from the repository root:
+The offline exported report can still be inspected separately by starting a
+static server from the repository root:
 
 ```sh
 python -m http.server 8000 --directory web
 ```
 
 Then visit `http://localhost:8000`. The browser reads the exported JSON and
-local media; it is not connected to a hosted backend. Leaflet is loaded from
+local media; this offline workflow is not connected to the API. Leaflet is loaded from
 unpkg and map tiles come from OpenStreetMap, so those external services need
 network access and receive normal browser requests for the assets/tiles they
-serve. If the exported JSON is missing or cannot be fetched, the page shows
-its embedded fallback sample with a notice; that sample is not the current
-pipeline output.
+serve. The hosted dashboard instead uses API results only and does not show a
+stale report after a request failure.
 
-### Optional local API
+### Local API and dashboard
 
 Install API dependencies together with the required pipeline and development
 extras:
@@ -371,20 +373,31 @@ $env:LLM_MOCK = "true"
 python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-The routes are `GET /health` (process health only) and
-`POST /triage` (one `multipart/form-data` file field named `file`). Upload a
-`.geojson` or `.json` GeoJSON `Feature` or non-empty `FeatureCollection` with
-Point features and schema-valid complaint properties. The file limit is 2 MiB
-and the whole request limit is 2 MiB plus 64 KiB. Accepted media types and
-error codes are in [docs/api.md](docs/api.md). The upload does not carry media
-files, and the API is unauthenticated and intended for localhost/demo use
-only. Do not expose it to a network. With the server running, a local request
-can be sent from PowerShell with:
+The service at `http://127.0.0.1:8000` serves the dashboard, `GET /health`,
+`POST /demo` (checked-in synthetic input), and `POST /triage` (one
+`multipart/form-data` file field named `file`). Public routes use the canonical
+pipeline in deterministic mock mode. Upload a `.geojson` or `.json` GeoJSON
+`Feature` or non-empty `FeatureCollection` with Point features and complaint
+properties. Limits are 2 MiB per file, 1,000 features, two concurrent pipeline
+requests, and 30 API requests per minute per client address. Uploads do not
+include media files and cannot read server files. The unauthenticated service
+is for a synthetic public demo, not municipal production use. Details and
+status codes are in [docs/api.md](docs/api.md). Use the dashboard's **Run
+Synthetic Demo** action or test an upload with:
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/triage `
   -F "file=@data/synthetic/complaints.geojson;type=application/geo+json"
 ```
+
+### Hosted dashboard and deployment
+
+The dashboard is prepared for Render but has **not** been deployed. Review
+[docs/deployment.md](docs/deployment.md) for the exact Blueprint settings,
+environment-variable inventory, manual deployment walkthrough, cold-start
+limitations, and judge demonstration steps. No provider key is required for
+the public synthetic demo; no live municipal data or hosted deployment is
+claimed.
 
 ### Tests, lint, and evaluation
 
@@ -424,9 +437,15 @@ the skill accepts, how to invoke the supported CLI/wrappers, and how to
 interpret their outputs:
 
 1. A compatible agent must discover or be configured to load this skill. The
-   repository does not install it into an agent automatically. For example,
-   the [Claude Code local setup and smoke-test guide](docs/skill-smoke-test.md)
-   explains its expected skill location.
+   repository does not install it into an agent automatically. After the
+   implementation branch is merged, the Skills CLI can install this skill:
+
+   ```powershell
+   npx skills add https://github.com/ShreyaJ-27/omni-grid-civic-issue-triage/tree/main/skill/omni-grid --skill omni-grid
+   ```
+
+   The installer prompts for supported agent targets. The portable instructions
+   also document the same-origin API and local CLI alternatives.
 2. Invoke the agent's skill command (for the documented Claude Code setup,
    `/omni-grid`) and provide a real input path. Do not ask an agent to invent
    complaint records or missing evidence.
@@ -437,11 +456,13 @@ interpret their outputs:
    Python library, or documented integration rather than reimplementing the
    schemas and checks. `triage` produces the complete structured report;
    validator-only CLI commands validate existing data only.
-5. Engineers inspect report statistics, hotspots, verdict checks, claims,
+5. For a hosted dashboard, run the checked-in demo through `POST /demo` or
+   upload supported GeoJSON through `POST /triage`; failures are shown rather
+   than replaced with stale report JSON.
+6. Engineers inspect report statistics, hotspots, verdict checks, claims,
    citations, and supporting evidence. They resolve inconclusive cases and
-   decide whether to act.
-6. If desired, an engineer can inspect the exported report in the static
-   `web/` consumer.
+   decide whether to act. `web/demo/report.json` remains for the separate
+   offline exporter workflow.
 
 The skill instructions are reusable, but discovery and slash-command
 behavior depend on the particular agent runtime. Python 3.11+, installed
@@ -493,11 +514,10 @@ A `suspect` label is not proof of fraud, misconduct, or responsibility.
   checks can be incomplete.
 - The current summary validation checks identifier membership and numeric
   token membership, not entailment, source quality, or factual completeness.
-- There is no authentication or authorization layer in the optional API.
-  It is not hardened for public deployment.
-- There is no hosted service, production data pipeline, universal agent
-  installer, live municipal dashboard, or automatic municipal workflow in
-  this repository.
+- The public demo API has no authentication. It is limited to synthetic,
+  mock-mode demo use and is not hardened for production municipal workloads.
+- Render deployment remains a manual step; no live service URL, provider
+  integration, production data pipeline, or municipal workflow is claimed.
 - Tests and synthetic benchmark results do not certify correctness on
   operational civic data.
 
@@ -646,6 +666,7 @@ claimed.
 - [Summary and damage-severity design notes](docs/summaries-and-damage-severity.md)
 - [Skill contract](skill/omni-grid/SKILL.md)
 - [Manual skill smoke test and verification status](docs/skill-smoke-test.md)
+- [Render deployment and environment-variable handoff](docs/deployment.md)
 - [Synthetic data notes](data/README.md)
 - [Severity scoring reference](references/severity.md)
 - [Evaluation methodology and current report](eval/results.md)
