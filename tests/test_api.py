@@ -70,9 +70,12 @@ def test_dashboard_is_served_from_the_api_origin(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert 'id="btn-run-demo"' in response.text
+    assert 'id="btn-run-demo-synthetic"' in response.text
+    assert "Run Real Bengaluru Demo" in response.text
     assert "Run Synthetic Demo" in response.text
     assert script_response.status_code == 200
     assert 'requestReport("/demo", null)' in script_response.text
+    assert 'requestReport("/demo/synthetic", null)' in script_response.text
 
 
 def test_demo_endpoint_runs_checked_in_fixture_through_canonical_pipeline(
@@ -85,10 +88,32 @@ def test_demo_endpoint_runs_checked_in_fixture_through_canonical_pipeline(
     assert response.status_code == 200
     report = Report.model_validate(response.json())
     assert len(report.complaints) == 500
-    assert len(report.hotspots) == 5
+    assert len(report.hotspots) == 58
     assert report.stats["model_mode"] == "mock"
     assert report.stats["model_inference_used"] is False
     assert report.stats["api_demo_media"] is True
+
+
+def test_demo_endpoints_serve_both_real_and_synthetic_fixtures(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_MOCK", "false")
+
+    # Real demo endpoint
+    res_real = client.get("/demo/real")
+    assert res_real.status_code == 200
+    report_real = Report.model_validate(res_real.json())
+    assert len(report_real.complaints) == 500
+    assert len(report_real.hotspots) == 58
+
+    # Synthetic demo endpoint
+    res_synth = client.get("/demo/synthetic")
+    assert res_synth.status_code == 200
+    report_synth = Report.model_validate(res_synth.json())
+    assert len(report_synth.complaints) == 500
+    assert len(report_synth.hotspots) == 5
+    assert report_synth.stats["model_mode"] == "mock"
 
 
 def test_valid_upload_returns_schema_valid_report(client: TestClient) -> None:

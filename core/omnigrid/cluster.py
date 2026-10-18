@@ -63,8 +63,11 @@ def _extract_complaint_id(item: Any) -> str:
     if isinstance(item, dict):
         if "id" in item:
             return str(item["id"])
+        if "complaint_id" in item:
+            return str(item["complaint_id"])
         if "properties" in item and isinstance(item["properties"], dict):
-            return str(item["properties"].get("id", ""))
+            props = item["properties"]
+            return str(props.get("id") or props.get("complaint_id") or "")
     return ""
 
 
@@ -117,8 +120,11 @@ def _extract_text(item: Any) -> str:
     if isinstance(item, dict):
         if "text" in item and isinstance(item["text"], str):
             return item["text"]
+        if "description" in item and isinstance(item["description"], str):
+            return item["description"]
         if "properties" in item and isinstance(item["properties"], dict):
-            return str(item["properties"].get("text", ""))
+            props = item["properties"]
+            return str(props.get("text") or props.get("description") or "")
     return ""
 
 

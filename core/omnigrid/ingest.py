@@ -98,8 +98,17 @@ def _feature_properties(feature: object, index: int) -> dict[str, object]:
 
     longitude, latitude = coordinates[:2]
     complaint_data = dict(properties)
-    if "id" not in complaint_data and feature.get("id") is not None:
-        complaint_data["id"] = feature["id"]
+    if "id" not in complaint_data:
+        if feature.get("id") is not None:
+            complaint_data["id"] = feature["id"]
+        elif "complaint_id" in complaint_data:
+            complaint_data["id"] = complaint_data["complaint_id"]
+
+    if "text" not in complaint_data and "description" in complaint_data:
+        complaint_data["text"] = complaint_data["description"]
+
+    if "media" not in complaint_data and "evidence" in complaint_data:
+        complaint_data["media"] = complaint_data["evidence"]
 
     for key, coordinate in (("lat", latitude), ("lon", longitude)):
         if key not in complaint_data:

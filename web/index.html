@@ -51,11 +51,12 @@
 
   <section class="demo-controls" aria-label="Run civic triage">
     <div class="demo-actions">
-      <button type="button" id="btn-run-demo" class="action-btn">Run Synthetic Demo</button>
+      <button type="button" id="btn-run-demo" class="action-btn real-btn">Run Real Bengaluru Demo</button>
+      <button type="button" id="btn-run-demo-synthetic" class="action-btn synthetic-btn">Run Synthetic Demo</button>
       <label class="upload-control" for="geojson-upload">Or upload GeoJSON</label>
       <input id="geojson-upload" type="file" accept=".geojson,.json,application/geo+json,application/json">
     </div>
-    <p id="api-status" role="status" aria-live="polite">Run the checked-in synthetic complaints through the live API, or upload a GeoJSON file.</p>
+    <p id="api-status" role="status" aria-live="polite">Choose a demo dataset above to run through the live API, or upload a GeoJSON file.</p>
   </section>
 
   <!-- Main Split Layout -->

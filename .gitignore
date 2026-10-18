@@ -39,3 +39,6 @@ data/cache/
 .idea/
 .DS_Store
 Thumbs.db
+
+data/real_*.geojson
+!data/real_sample_500.geojson

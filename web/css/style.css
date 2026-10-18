@@ -149,6 +149,23 @@ h1 {
   background: var(--primary-light);
   font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.action-btn.real-btn {
+  background: #2563eb;
+}
+
+.action-btn.real-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.action-btn.synthetic-btn {
+  background: #0284c7;
+}
+
+.action-btn.synthetic-btn:hover:not(:disabled) {
+  background: #0369a1;
 }
 
 .action-btn:disabled {

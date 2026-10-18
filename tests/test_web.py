@@ -117,6 +117,9 @@ def test_dashboard_request_errors_expose_retry_and_loading_feedback():
 def test_dashboard_exposes_demo_and_geojson_upload_controls():
     content = INDEX_HTML.read_text(encoding="utf-8")
     assert 'id="btn-run-demo"' in content
+    assert 'id="btn-run-demo-synthetic"' in content
+    assert "Run Real Bengaluru Demo" in content
+    assert "Run Synthetic Demo" in content
     assert 'id="geojson-upload"' in content
     assert 'id="api-status"' in content
 

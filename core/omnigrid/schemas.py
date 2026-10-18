@@ -31,6 +31,35 @@ class Complaint(BaseModel):
     media: list[Media] = Field(default_factory=list)
     closure: Closure | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_complaint_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "id" not in data and "complaint_id" in data:
+                data["id"] = str(data["complaint_id"])
+            if "text" not in data and "description" in data:
+                data["text"] = str(data["description"])
+            if "media" not in data and "evidence" in data:
+                data["media"] = data["evidence"]
+
+            category = data.get("category")
+            if isinstance(category, str):
+                cat_lower = category.strip().lower()
+                category_mapping = {
+                    "broken_streetlight": "streetlight",
+                    "street_light": "streetlight",
+                    "street light": "streetlight",
+                    "water_leakage": "waterlogging",
+                    "leakage": "waterlogging",
+                    "drainage": "waterlogging",
+                    "garbage_dump": "other",
+                    "garbage": "other",
+                    "general_civic": "other",
+                }
+                if cat_lower in category_mapping:
+                    data["category"] = category_mapping[cat_lower]
+        return data
+
 
 class EvidenceMeta(BaseModel):
     complaint_id: str
