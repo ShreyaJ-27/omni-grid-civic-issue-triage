@@ -358,3 +358,98 @@ def test_css_responsive_layout_media_queries():
     assert "@media" in css_content
     assert "max-width" in css_content
     assert "flex-direction: column" in css_content
+
+
+def test_night_view_toggle_and_persistence():
+    """Night mode toggle button exists and persists theme via localStorage."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = APP_JS.read_text(encoding="utf-8")
+    css = STYLE_CSS.read_text(encoding="utf-8")
+    assert 'id="btn-night-view"' in html
+    assert "Night view" in html
+    assert '[data-theme="night"]' in css
+    assert 'localStorage.getItem("og-theme")' in app_js
+    assert 'localStorage.setItem("og-theme"' in app_js
+
+
+def test_ai_auditor_simulator_scenarios_and_guidance():
+    """AI auditor modal provides 4 canonical scenarios, checks table, and guidance."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = APP_JS.read_text(encoding="utf-8")
+    assert 'id="btn-open-auditor"' in html
+    assert 'id="auditor-modal"' in html
+    assert 'data-scenario="geofence"' in html
+    assert 'data-scenario="mismatch"' in html
+    assert 'data-scenario="hash"' in html
+    assert 'data-scenario="genuine"' in html
+    assert 'id="auditor-checks-table"' in html
+    assert 'id="auditor-review-guidance"' in html
+    assert "stock photo" in html.lower() or "stock photo" in app_js.lower()
+    assert "AUDITOR_SCENARIOS" in app_js
+
+
+def test_preview_first_data_ingestion_and_formats():
+    """Data ingestion panel supports CSV, JSON, GeoJSON, and PDF with validations."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = APP_JS.read_text(encoding="utf-8")
+    assert 'id="page-ingestion"' in html
+    assert 'id="ingestion-drop-zone"' in html
+    assert 'id="csv-mapping-section"' in html
+    assert 'id="pdf-consent-check"' in html
+    assert 'id="validation-rows-wrapper"' in html
+    assert 'id="media-limitation-notice"' in html
+    assert "Tesseract" in html
+    assert "Poppler" in html or "poppler" in html
+    assert "parseCsvLine" in app_js
+    assert "validateIngestRecords" in app_js
+
+
+def test_speech_briefing_and_json_export_controls():
+    """Speech synthesis briefing and current-report JSON export controls exist."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = APP_JS.read_text(encoding="utf-8")
+    assert 'id="btn-listen-briefing"' in html
+    assert 'id="btn-download-json"' in html
+    assert "speechSynthesis" in app_js
+    assert "downloadReportJson" in app_js
+
+
+def test_quick_filter_summary_cards_and_map_fit():
+    """Summary cards have quick-filter actions and map fit controls are exposed."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    app_js = APP_JS.read_text(encoding="utf-8")
+    assert 'data-filter-action="all"' in html
+    assert 'data-filter-action="hotspots"' in html
+    assert 'data-filter-action="suspect"' in html
+    assert 'data-filter-action="verified"' in html
+    assert 'id="btn-fit-map"' in html
+    assert "handleCardFilter" in app_js
+    assert "fitMapToBounds" in app_js
+    assert "lastSuccessfulReport" in app_js
+
+
+def test_nav_tabs_have_matching_tabpanel_aria_ids():
+    """Tab buttons declare IDs that match the tabpanel aria-labelledby references."""
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    for tab_id in [
+        "tab-overview",
+        "tab-citymap",
+        "tab-issues",
+        "tab-hotspots",
+        "tab-proofoffix",
+        "tab-briefings",
+        "tab-ingestion",
+    ]:
+        assert f'id="{tab_id}"' in html
+        assert f'aria-labelledby="{tab_id}"' in html
+
+
+def test_app_js_safety_and_edge_case_handling():
+    """Verify speech debounce, auditor timer guards, and coordinate extractors exist."""
+    app_js = APP_JS.read_text(encoding="utf-8")
+    assert "auditTimer" in app_js
+    assert "extractCoords" in app_js
+    assert "applyCsvMappingFromUI" in app_js
+    assert "speechSynth.speaking" in app_js
+
+

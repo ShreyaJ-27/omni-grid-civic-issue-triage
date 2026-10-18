@@ -1,18 +1,29 @@
 /**
- * Omni-Grid Civic Issue Triage - Frontend Application
- * Renders validated reports returned by the Omni-Grid API.
+ * Omni-Grid Civic Field Desk — Frontend Application
+ *
+ * Architecture:
+ * - Pure vanilla ES6+ (no frameworks)
+ * - DOM-safe: all text via textContent, never innerHTML for user data
+ * - API-first: renders only reports returned by the live API
+ * - On failure: preserves last successful report, shows explicit error + retry
+ * - Features: night theme, speech synthesis briefing, JSON export,
+ *             AI Auditor simulator, civic data ingestion preview,
+ *             keyboard-accessible map/panel selection
  */
 
-// Application state
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Application State
+// ---------------------------------------------------------------------------
 const state = {
   report: null,
+  lastSuccessfulReport: null,   // preserved across failed requests
+  lastSuccessfulMode: null,     // demo mode of last successful report
   requestInProgress: false,
-  lastRequest: null,
+  lastRequest: null,            // { endpoint, file } for retry
   map: null,
-  mapLayers: {
-    hotspots: null,
-    complaints: null
-  },
+  mapLayers: { hotspots: null, complaints: null },
   markersMap: new Map(),
   circlesMap: new Map(),
   verdictsMap: new Map(),
@@ -22,147 +33,257 @@ const state = {
   filterStatus: "all",
   filterCategory: "all",
   filterVerdict: "all",
-  searchQuery: ""
+  searchQuery: "",
+  // UI state
+  currentPage: "overview",
+  currentPanelTab: "panel-briefing",
+  nightMode: false,
+  speechSynth: null,
+  speechUtterance: null,
+  isSpeaking: false,
+  // Auditor
+  selectedScenario: null,
+  // Ingestion
+  ingestParsed: null,    // { records, rawRows, format, valid, invalid, geojson, notices }
 };
 
-// DOM Security Helper: safely creates text nodes or sanitized elements
+let auditTimer = null;
+
+// ---------------------------------------------------------------------------
+// DOM Helpers
+// ---------------------------------------------------------------------------
 function createElem(tag, classes = [], text = "") {
-  const elem = document.createElement(tag);
+  const el = document.createElement(tag);
   if (Array.isArray(classes)) {
-    classes.forEach(c => c && elem.classList.add(c));
+    classes.forEach(c => c && el.classList.add(c));
   } else if (typeof classes === "string" && classes) {
-    elem.className = classes;
+    el.className = classes;
   }
   if (text !== undefined && text !== null && text !== "") {
-    elem.textContent = String(text);
+    el.textContent = String(text);
   }
-  return elem;
+  return el;
 }
 
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = String(text);
+}
+
+function show(el) { if (el) el.style.display = ""; }
+function hide(el) { if (el) el.style.display = "none"; }
+function showEl(id) { const el = document.getElementById(id); if (el) el.style.display = ""; }
+function hideEl(id) { const el = document.getElementById(id); if (el) el.style.display = "none"; }
+
+// ---------------------------------------------------------------------------
+// Coordinate Validation & Extraction
+// ---------------------------------------------------------------------------
 function isValidCoord(lat, lon) {
   return (
-    typeof lat === "number" &&
-    typeof lon === "number" &&
-    isFinite(lat) &&
-    isFinite(lon) &&
-    lat >= -90 &&
-    lat <= 90 &&
-    lon >= -180 &&
-    lon <= 180
+    typeof lat === "number" && typeof lon === "number" &&
+    isFinite(lat) && isFinite(lon) &&
+    lat >= -90 && lat <= 90 &&
+    lon >= -180 && lon <= 180
   );
 }
 
-// Media Path Resolution Helper
+function extractCoords(r) {
+  if (!r || typeof r !== "object") return null;
+  const latVal = r.lat ?? r.latitude ?? r.Lat ?? r.Latitude;
+  const lonVal = r.lon ?? r.longitude ?? r.Lon ?? r.Longitude ?? r.lng;
+  const lat = typeof latVal === "number" ? latVal : parseFloat(latVal);
+  const lon = typeof lonVal === "number" ? lonVal : parseFloat(lonVal);
+  return isValidCoord(lat, lon) ? { lat, lon } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Media Path Resolution
+// ---------------------------------------------------------------------------
 function resolveMediaPath(rawPath) {
   if (!rawPath) return "";
   const cleaned = String(rawPath).trim();
-  if (cleaned.startsWith("demo/media/")) {
-    return cleaned;
-  }
+  if (cleaned.startsWith("demo/media/")) return cleaned;
   if (
     state.report &&
     state.report.stats.api_demo_media === true &&
     cleaned.startsWith("data/synthetic/media/")
   ) {
     const filename = cleaned.split("/").pop().split("\\").pop();
-    if (/^[a-zA-Z0-9._-]+$/.test(filename)) {
-      return `demo/media/${filename}`;
-    }
+    if (/^[a-zA-Z0-9._-]+$/.test(filename)) return `demo/media/${filename}`;
   }
   return "";
 }
 
-// App Initialization
-function initApp() {
-  setupTabs();
-  setupFilterControls();
-  clearReport();
-  initOrUpdateMap();
-  setApiStatus("Choose a demo dataset above to run through the live API, or upload a GeoJSON file.");
-  const btnReal = document.getElementById("btn-run-demo");
-  if (btnReal) {
-    btnReal.addEventListener("click", event => {
-      requestReport("/demo", null, event.currentTarget);
-    });
+// ---------------------------------------------------------------------------
+// Night/Light Theme
+// ---------------------------------------------------------------------------
+function initTheme() {
+  const saved = localStorage.getItem("og-theme");
+  if (saved === "night") applyTheme(true);
+
+  const btn = document.getElementById("btn-night-view");
+  if (btn) {
+    btn.addEventListener("click", () => applyTheme(!state.nightMode));
   }
-  const btnSynthetic = document.getElementById("btn-run-demo-synthetic");
-  if (btnSynthetic) {
-    btnSynthetic.addEventListener("click", event => {
-      requestReport("/demo/synthetic", null, event.currentTarget);
-    });
+}
+
+function applyTheme(night) {
+  state.nightMode = night;
+  document.documentElement.setAttribute("data-theme", night ? "night" : "");
+  localStorage.setItem("og-theme", night ? "night" : "light");
+  const btn = document.getElementById("btn-night-view");
+  if (btn) {
+    btn.textContent = night ? "Day view" : "Night view";
+    btn.setAttribute("aria-pressed", String(night));
   }
-  document.getElementById("claims-list-container").addEventListener("click", event => {
-    const demoButton = event.target.closest("[data-run-demo]");
-    if (demoButton) {
-      requestReport("/demo/synthetic", null, demoButton);
-    }
-  });
-  document.getElementById("geojson-upload").addEventListener("change", event => {
-    const file = event.target.files[0];
-    if (file) requestReport("/triage", file);
+}
+
+// ---------------------------------------------------------------------------
+// Page Navigation (primary tabs & all data-page elements)
+// ---------------------------------------------------------------------------
+function initPageNav() {
+  document.querySelectorAll("[data-page]").forEach(el => {
+    el.addEventListener("click", e => {
+      e.preventDefault();
+      const page = el.dataset.page;
+      if (page) switchPage(page);
+    });
   });
 }
 
+function switchPage(pageId) {
+  state.currentPage = pageId;
+
+  // Deactivate all nav tabs
+  document.querySelectorAll(".nav-tab, .nav-tab-ingestion").forEach(t => {
+    t.classList.remove("active");
+    t.setAttribute("aria-selected", "false");
+  });
+  // Activate target tab
+  const activeTab = document.querySelector(`[data-page="${pageId}"]`);
+  if (activeTab) {
+    activeTab.classList.add("active");
+    activeTab.setAttribute("aria-selected", "true");
+  }
+
+  // Deactivate all pages
+  document.querySelectorAll(".tab-page").forEach(p => p.classList.remove("active"));
+  // Activate target page
+  const page = document.getElementById(`page-${pageId}`);
+  if (page) page.classList.add("active");
+
+  // Move map container to full page view or overview view
+  const mapEl = document.getElementById("map");
+  if (mapEl) {
+    if (pageId === "citymap") {
+      const slot = document.getElementById("map-slot-citymap");
+      if (slot && !slot.contains(mapEl)) {
+        slot.appendChild(mapEl);
+        mapEl.style.height = "520px";
+      }
+    } else if (pageId === "overview") {
+      const slot = document.getElementById("map-slot-overview");
+      if (slot && !slot.contains(mapEl)) {
+        slot.appendChild(mapEl);
+        mapEl.style.height = "";
+      }
+    }
+  }
+
+  // Invalidate map size on tab switch
+  if (state.map) {
+    setTimeout(() => {
+      state.map.invalidateSize();
+      fitMapToBounds();
+    }, 150);
+  }
+
+  // Sync full-page issue list when switching tabs
+  if (pageId === "issues") syncIssuesPageList();
+  if (pageId === "hotspots") syncHotspotsPageList();
+  if (pageId === "briefings") syncBriefingsPage();
+  if (pageId === "proofoffix") syncProofPage();
+}
+
+// ---------------------------------------------------------------------------
+// Panel Sub-tabs (right panel)
+// ---------------------------------------------------------------------------
+function initPanelTabs() {
+  document.querySelectorAll(".panel-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const panelId = btn.dataset.panel;
+      if (panelId) switchPanel(panelId);
+    });
+    btn.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        btn.click();
+      }
+    });
+  });
+}
+
+function switchPanel(panelId) {
+  state.currentPanelTab = panelId;
+  document.querySelectorAll(".panel-tab").forEach(t => {
+    const active = t.dataset.panel === panelId;
+    t.classList.toggle("active", active);
+    t.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll(".panel-content").forEach(p => {
+    p.classList.toggle("active", p.id === panelId);
+  });
+  if (state.map) setTimeout(() => state.map.invalidateSize(), 150);
+}
+
+// ---------------------------------------------------------------------------
+// API Status & Banner
+// ---------------------------------------------------------------------------
 function setApiStatus(message, status = "idle") {
-  const statusElement = document.getElementById("api-status");
-  statusElement.textContent = message;
-  statusElement.dataset.state = status;
+  const el = document.getElementById("api-status");
+  if (el) {
+    el.textContent = String(message);
+    el.dataset.state = status;
+  }
+
   const banner = document.getElementById("banner-notice");
-  banner.classList.toggle("active", status === "error");
+  if (!banner) return;
+
+  const isError = status === "error";
+  banner.classList.toggle("active", isError);
   banner.replaceChildren();
-  if (status === "error") {
-    banner.appendChild(createElem("span", [], message));
+
+  if (isError) {
+    const msgSpan = createElem("span", [], message);
+    banner.appendChild(msgSpan);
+
     if (state.lastRequest) {
-      const retryButton = createElem("button", ["retry-btn"], "Retry");
-      retryButton.type = "button";
-      retryButton.addEventListener("click", event => {
-        requestReport(state.lastRequest.endpoint, state.lastRequest.file, event.currentTarget);
+      const retryBtn = createElem("button", ["retry-btn"], "Retry");
+      retryBtn.type = "button";
+      retryBtn.addEventListener("click", () => {
+        requestReport(state.lastRequest.endpoint, state.lastRequest.file, retryBtn);
       });
-      banner.appendChild(retryButton);
+      banner.appendChild(retryBtn);
     }
   }
 }
 
-function clearReport() {
-  state.report = null;
-  state.verdictsMap.clear();
-  state.complaintsMap.clear();
-  state.markersMap.clear();
-  state.circlesMap.clear();
-  state.selectedComplaintId = null;
-  state.selectedHotspotId = null;
-  setText("stat-total-complaints", "—");
-  setText("stat-total-hotspots", "—");
-  setText("stat-suspect-closures", "—");
-  setText("stat-verified-closures", "—");
-  if (state.mapLayers.hotspots) state.mapLayers.hotspots.clearLayers();
-  if (state.mapLayers.complaints) state.mapLayers.complaints.clearLayers();
-  if (state.map) state.map.setView([12.9716, 77.5946], 12);
-  renderSummaryClaims();
-  renderHotspotsList();
-  renderComplaintsList();
-  renderInspectionEmptyState();
-}
-
+// ---------------------------------------------------------------------------
+// Report Validation
+// ---------------------------------------------------------------------------
 function validateReport(data) {
   if (
-    !data ||
-    typeof data !== "object" ||
+    !data || typeof data !== "object" ||
     !Array.isArray(data.complaints) ||
     !Array.isArray(data.hotspots) ||
     !Array.isArray(data.verdicts) ||
     !Array.isArray(data.claims) ||
-    !data.stats ||
-    typeof data.stats !== "object"
+    !data.stats || typeof data.stats !== "object"
   ) {
     throw new Error("The API response does not match the Omni-Grid Report schema.");
   }
-  for (const complaint of data.complaints) {
-    if (
-      !complaint ||
-      typeof complaint.id !== "string" ||
-      !isValidCoord(complaint.lat, complaint.lon)
-    ) {
+  for (const c of data.complaints) {
+    if (!c || typeof c.id !== "string" || !isValidCoord(c.lat, c.lon)) {
       throw new Error("The API returned an invalid complaint in its Report.");
     }
   }
@@ -170,210 +291,348 @@ function validateReport(data) {
 }
 
 function apiErrorMessage(error) {
-  if (!(error instanceof Error)) {
-    return "The API request failed unexpectedly. Please retry.";
-  }
-  if (error.name === "AbortError") {
+  if (!(error instanceof Error)) return "The API request failed unexpectedly. Please retry.";
+  if (error.name === "AbortError")
     return "The request timed out while the service was starting or processing. Please retry.";
-  }
   if (error.status === 413) return "The GeoJSON request is too large; the limit is 2 MiB.";
   if (error.status === 422) return `GeoJSON validation failed: ${error.message}`;
   if (error.status === 429) return "Demo request limit reached. Wait a minute and retry.";
   if (error.status === 503) return "The service is busy or waking from a cold start. Please retry.";
   if (error.status >= 500) return "The API is unavailable or encountered an error. Please retry.";
-  if (error instanceof TypeError) {
+  if (error instanceof TypeError)
     return "Could not reach the API. The service may be starting; wait briefly and retry.";
-  }
   return error.message || "The API request failed.";
 }
 
+// ---------------------------------------------------------------------------
+// API Request
+// ---------------------------------------------------------------------------
 async function requestReport(endpoint, file, triggerButton = null) {
   if (state.requestInProgress) return;
   state.requestInProgress = true;
   state.lastRequest = { endpoint, file };
-  const demoButtons = document.querySelectorAll(".action-btn");
+
+  // Disable all action buttons
+  const actionBtns = document.querySelectorAll(
+    "#btn-run-demo, #btn-run-demo-synthetic, .btn-run-real, .btn-synthetic"
+  );
   const fileInput = document.getElementById("geojson-upload");
-  demoButtons.forEach(btn => (btn.disabled = true));
+  actionBtns.forEach(b => { b.disabled = true; });
+  if (fileInput) fileInput.disabled = true;
+
   if (triggerButton) {
     triggerButton.disabled = true;
     triggerButton.setAttribute("aria-busy", "true");
     triggerButton.classList.add("is-loading");
   }
-  fileInput.disabled = true;
-  clearReport();
-  document.getElementById("claims-list-container").replaceChildren(
-    createLoadingMessage("Processing complaints. The service may take up to three minutes to wake and complete processing.")
-  );
+
+  // Show loading state
+  const claimsContainer = document.getElementById("claims-list-container");
+  if (claimsContainer) {
+    claimsContainer.replaceChildren(
+      createLoadingMessage("Processing complaints. The service may take up to three minutes to wake and complete processing.")
+    );
+  }
   setApiStatus("Processing your dataset. A free service may take up to three minutes to wake and complete processing.", "loading");
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 180000);
+
   try {
-    const options = {
-      method: file ? "POST" : "GET",
-      signal: controller.signal
-    };
+    const options = { method: "POST", signal: controller.signal };
+
+    if (endpoint === "/demo" || endpoint === "/demo/real" || endpoint === "/demo/synthetic") {
+      options.method = "POST";
+    }
+
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
-        const error = new Error("Selected file exceeds the 2 MiB limit.");
-        error.status = 413;
-        throw error;
+        const err = new Error("Selected file exceeds the 2 MiB limit.");
+        err.status = 413;
+        throw err;
       }
       const form = new FormData();
       form.append("file", file);
       options.body = form;
     }
+
     const response = await fetch(endpoint, options);
+
     let payload;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new Error(`API returned an unreadable response (HTTP ${response.status}).`);
-    }
+    try { payload = await response.json(); }
+    catch { throw new Error(`API returned an unreadable response (HTTP ${response.status}).`); }
+
     if (!response.ok) {
-      const error = new Error(
+      const err = new Error(
         payload && typeof payload.detail === "string"
           ? payload.detail
           : `HTTP ${response.status}`
       );
-      error.status = response.status;
-      throw error;
+      err.status = response.status;
+      throw err;
     }
+
     const report = validateReport(payload);
     loadReport(report);
+    state.lastSuccessfulReport = report;
+    const modeText = endpoint.includes("synthetic") ? "SYNTHETIC SCENARIOS" : "REAL SAMPLE";
+    state.lastSuccessfulMode = modeText;
+
     if (report.complaints.length === 0) {
       setApiStatus("The API returned a valid Report with no complaints.", "empty");
     } else {
-      const mode = report.stats.model_mode === "mock" ? "Deterministic mock mode" : "Live mode";
+      const mode = report.stats.model_mode === "mock"
+        ? "Deterministic mock mode"
+        : "Live mode";
       setApiStatus(
         `Report received from the API: ${report.complaints.length} complaints. ${mode}; inspect checks and evidence below.`,
         "success"
       );
+      setText("footer-demo-mode", modeText);
     }
+
   } catch (error) {
-    clearReport();
-    setApiStatus(apiErrorMessage(error), "error");
+    const errorMsg = apiErrorMessage(error);
+    if (state.lastSuccessfulReport) {
+      setApiStatus(`${errorMsg} Preserving previously loaded report.`, "error");
+      loadReport(state.lastSuccessfulReport);
+      if (state.lastSuccessfulMode) {
+        setText("footer-demo-mode", state.lastSuccessfulMode);
+      }
+    } else {
+      setApiStatus(errorMsg, "error");
+      if (claimsContainer) {
+        claimsContainer.replaceChildren(createElem("div", ["state-message"],
+          "Request failed. Check the banner above and retry."));
+      }
+    }
+
   } finally {
     clearTimeout(timeout);
     state.requestInProgress = false;
-    demoButtons.forEach(btn => (btn.disabled = false));
-    demoButtons.forEach(btn => {
-      btn.removeAttribute("aria-busy");
-      btn.classList.remove("is-loading");
+    actionBtns.forEach(b => { b.disabled = false; });
+    actionBtns.forEach(b => {
+      b.removeAttribute("aria-busy");
+      b.classList.remove("is-loading");
     });
-    if (triggerButton && !triggerButton.classList.contains("action-btn")) {
+    if (triggerButton) {
       triggerButton.disabled = false;
       triggerButton.removeAttribute("aria-busy");
       triggerButton.classList.remove("is-loading");
     }
-    fileInput.disabled = false;
-    fileInput.value = "";
+    if (fileInput) {
+      fileInput.disabled = false;
+      fileInput.value = "";
+    }
   }
 }
 
 function createLoadingMessage(message) {
-  const loading = createElem("div", ["state-message", "loading-message"]);
-  loading.setAttribute("role", "status");
-  loading.appendChild(createElem("div", ["state-spinner"]));
-  loading.appendChild(createElem("p", [], message));
-  return loading;
+  const wrapper = createElem("div", ["state-message", "loading-message"]);
+  wrapper.setAttribute("role", "status");
+  wrapper.appendChild(createElem("div", ["state-spinner"]));
+  wrapper.appendChild(createElem("p", [], message));
+  return wrapper;
 }
 
+// ---------------------------------------------------------------------------
+// Load Report (orchestrates all renders)
+// ---------------------------------------------------------------------------
 function loadReport(data) {
   state.report = data;
 
-  // Build lookups for fast O(1) query
+  // Rebuild lookup maps
   state.verdictsMap.clear();
-  if (Array.isArray(data.verdicts)) {
-    data.verdicts.forEach(v => {
-      if (v && v.complaint_id) {
-        state.verdictsMap.set(String(v.complaint_id), v);
-      }
-    });
-  }
-
+  (data.verdicts || []).forEach(v => {
+    if (v && v.complaint_id) state.verdictsMap.set(String(v.complaint_id), v);
+  });
   state.complaintsMap.clear();
-  if (Array.isArray(data.complaints)) {
-    data.complaints.forEach(c => {
-      if (c && c.id) {
-        state.complaintsMap.set(String(c.id), c);
-      }
-    });
-  }
+  (data.complaints || []).forEach(c => {
+    if (c && c.id) state.complaintsMap.set(String(c.id), c);
+  });
 
-  // Render header stats
   renderHeaderStats();
-
-  // Render Summary Claims
   renderSummaryClaims();
-
-  // Render Hotspots List
   renderHotspotsList();
-
-  // Render Complaints List
   renderComplaintsList();
-
-  // Initialize or update Map
+  renderInspectionEmptyState();
   initOrUpdateMap();
+  updateTabCounts();
 }
 
+// ---------------------------------------------------------------------------
+// Header Stats
+// ---------------------------------------------------------------------------
 function renderHeaderStats() {
   const stats = state.report.stats || {};
-  const totalComplaints = stats.total_complaints ?? (state.report.complaints ? state.report.complaints.length : 0);
-  const totalHotspots = stats.total_hotspots ?? (state.report.hotspots ? state.report.hotspots.length : 0);
-  const suspectCount = stats.suspect_count ?? countVerdicts("suspect");
-  const verifiedCount = stats.verified_count ?? countVerdicts("verified");
+  const total    = stats.total_complaints ?? state.report.complaints.length;
+  const hotspots = stats.total_hotspots   ?? state.report.hotspots.length;
+  const suspect  = stats.suspect_count    ?? countVerdicts("suspect");
+  const verified = stats.verified_count   ?? countVerdicts("verified");
 
-  setText("stat-total-complaints", totalComplaints);
-  setText("stat-total-hotspots", totalHotspots);
-  setText("stat-suspect-closures", suspectCount);
-  setText("stat-verified-closures", verifiedCount);
+  setText("stat-total-complaints",  total);
+  setText("stat-total-hotspots",    hotspots);
+  setText("stat-suspect-closures",  suspect);
+  setText("stat-verified-closures", verified);
+  updateMapCountBadge();
 }
 
-function countVerdicts(status) {
-  let cnt = 0;
-  state.verdictsMap.forEach(v => {
-    if (v.verdict === status) cnt++;
-  });
-  return cnt;
+function countVerdicts(verdict) {
+  let n = 0;
+  state.verdictsMap.forEach(v => { if (v.verdict === verdict) n++; });
+  return n;
 }
 
-function setText(id, text) {
-  const elem = document.getElementById(id);
-  if (elem) elem.textContent = String(text);
+function updateMapCountBadge() {
+  const badge = document.getElementById("map-count-badge");
+  const badgeFull = document.getElementById("map-count-badge-full");
+  const visible = state.report ? getFilteredComplaints().length : 0;
+  const text = `${visible} on map`;
+  if (badge) badge.textContent = text;
+  if (badgeFull) badgeFull.textContent = text;
+}
+
+function updateTabCounts() {
+  if (!state.report) return;
+  const claims   = (state.report.claims || []).length;
+  const hotspots = (state.report.hotspots || []).length;
+  const issues   = (state.report.complaints || []).length;
+
+  setText("tab-count-briefing", claims);
+  setText("tab-count-hotspots", hotspots);
+  setText("tab-count-issues",   issues);
 }
 
 // ---------------------------------------------------------------------------
-// Tabs & Navigation
+// Summary Cards — quick-filter shortcuts
 // ---------------------------------------------------------------------------
-function setupTabs() {
-  const buttons = document.querySelectorAll(".tab-btn");
-  buttons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      buttons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-
-      const targetId = btn.dataset.tab;
-      document.querySelectorAll(".tab-content").forEach(content => {
-        content.classList.remove("active");
-      });
-      const activeContent = document.getElementById(targetId);
-      if (activeContent) activeContent.classList.add("active");
-
-      // Invalidate map size in case layout shifted
-      if (state.map) {
-        setTimeout(() => state.map.invalidateSize(), 150);
+function initSummaryCards() {
+  document.querySelectorAll(".summary-card[data-filter-action]").forEach(card => {
+    card.addEventListener("click", () => handleCardFilter(card.dataset.filterAction));
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handleCardFilter(card.dataset.filterAction);
       }
     });
   });
 }
 
-function switchTab(tabId) {
-  const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-  if (btn) btn.click();
+function handleCardFilter(action) {
+  if (!state.report) {
+    if (action === "all") {
+      requestReport("/demo/synthetic", null, document.getElementById("btn-run-demo-synthetic"));
+    }
+    return;
+  }
+  document.querySelectorAll(".summary-card").forEach(c => c.classList.remove("active-filter"));
+  const card = document.querySelector(`.summary-card[data-filter-action="${action}"]`);
+  if (card) card.classList.add("active-filter");
+
+  if (action === "all") {
+    resetFilters();
+  } else if (action === "hotspots") {
+    switchPage("overview");
+    switchPanel("panel-hotspots");
+  } else if (action === "suspect") {
+    setFilter("verdict", "suspect");
+    switchPanel("panel-issues");
+  } else if (action === "verified") {
+    setFilter("verdict", "verified");
+    switchPanel("panel-issues");
+  }
+}
+
+function setFilter(type, value) {
+  if (type === "status") {
+    state.filterStatus = value;
+    const el = document.getElementById("filter-status");
+    if (el) el.value = value;
+  } else if (type === "category") {
+    state.filterCategory = value;
+    const el = document.getElementById("filter-category");
+    if (el) el.value = value;
+  } else if (type === "verdict") {
+    state.filterVerdict = value;
+    const el = document.getElementById("filter-verdict");
+    if (el) el.value = value;
+  }
+  applyFilters();
 }
 
 // ---------------------------------------------------------------------------
-// Summary Claims Tab
+// Filter Controls Setup
+// ---------------------------------------------------------------------------
+function setupFilterControls() {
+  const statusSel  = document.getElementById("filter-status");
+  const catSel     = document.getElementById("filter-category");
+  const verdictSel = document.getElementById("filter-verdict");
+  const search     = document.getElementById("search-input");
+  const resetBtn   = document.getElementById("btn-reset-filters");
+  const fitBtn     = document.getElementById("btn-fit-map");
+  const fitBtnFull = document.getElementById("btn-fit-map-full");
+  const fullscreenBtn = document.getElementById("btn-fullscreen-map");
+
+  if (statusSel)  statusSel.addEventListener("change",  e => { state.filterStatus   = e.target.value; applyFilters(); });
+  if (catSel)     catSel.addEventListener("change",     e => { state.filterCategory = e.target.value; applyFilters(); });
+  if (verdictSel) verdictSel.addEventListener("change", e => { state.filterVerdict  = e.target.value; applyFilters(); });
+  if (search)     search.addEventListener("input",      e => { state.searchQuery    = e.target.value.toLowerCase().trim(); applyFilters(); });
+  if (resetBtn)   resetBtn.addEventListener("click",    () => resetFilters());
+  if (fitBtn)     fitBtn.addEventListener("click",      () => fitMapToBounds());
+  if (fitBtnFull) fitBtnFull.addEventListener("click",  () => fitMapToBounds());
+  if (fullscreenBtn) fullscreenBtn.addEventListener("click", () => switchPage("citymap"));
+}
+
+function resetFilters() {
+  state.filterStatus   = "all";
+  state.filterCategory = "all";
+  state.filterVerdict  = "all";
+  state.searchQuery    = "";
+  state.selectedHotspotId = null;
+
+  ["filter-status", "filter-category", "filter-verdict"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "all";
+  });
+  const search = document.getElementById("search-input");
+  if (search) search.value = "";
+
+  document.querySelectorAll(".summary-card").forEach(c => c.classList.remove("active-filter"));
+  applyFilters();
+}
+
+function applyFilters() {
+  renderComplaintsList();
+  updateMapMarkersVisibility();
+  updateMapCountBadge();
+  syncIssuesPageList();
+}
+
+// ---------------------------------------------------------------------------
+// Get Filtered Complaints
+// ---------------------------------------------------------------------------
+function getFilteredComplaints(allowedIdSet = null) {
+  if (!state.report) return [];
+  return (state.report.complaints || []).filter(c => {
+    if (allowedIdSet && !allowedIdSet.has(c.id)) return false;
+    if (state.filterStatus !== "all"   && c.status   !== state.filterStatus)   return false;
+    if (state.filterCategory !== "all" && c.category !== state.filterCategory) return false;
+    if (state.filterVerdict !== "all") {
+      const v = state.verdictsMap.get(c.id);
+      if (state.filterVerdict === "none" && v) return false;
+      if (state.filterVerdict !== "none" && (!v || v.verdict !== state.filterVerdict)) return false;
+    }
+    if (state.searchQuery) {
+      const textMatch = (c.text || "").toLowerCase().includes(state.searchQuery);
+      const idMatch   = (c.id || "").toLowerCase().includes(state.searchQuery);
+      if (!textMatch && !idMatch) return false;
+    }
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Summary Claims (Briefing Panel)
 // ---------------------------------------------------------------------------
 function renderSummaryClaims() {
   const container = document.getElementById("claims-list-container");
@@ -383,79 +642,77 @@ function renderSummaryClaims() {
   if (!state.report) {
     const welcome = createElem("section", ["welcome-state"]);
     welcome.setAttribute("aria-labelledby", "welcome-heading");
-    welcome.appendChild(createElem("div", ["welcome-icon"], "⌖"));
-    welcome.lastChild.setAttribute("aria-hidden", "true");
-    welcome.appendChild(createElem("h2", [], "Ready to analyze civic complaints?"));
-    welcome.lastChild.id = "welcome-heading";
-    welcome.appendChild(createElem(
-      "p",
-      [],
+    welcome.appendChild(Object.assign(createElem("div", ["welcome-icon"], "⌖"), { ariaHidden: "true" }));
+    const h2 = createElem("h2", [], "Ready to analyze civic complaints?");
+    h2.id = "welcome-heading";
+    welcome.appendChild(h2);
+    welcome.appendChild(createElem("p", [],
       "Omni-Grid processes complaint data, identifies geographic hotspots, and helps review evidence and closure claims."
     ));
-    const demoButton = createElem("button", ["action-btn", "welcome-demo-btn"], "Run Synthetic Demo");
-    demoButton.type = "button";
-    demoButton.dataset.runDemo = "";
-    welcome.appendChild(demoButton);
-    welcome.appendChild(createElem(
-      "p",
-      ["welcome-upload-hint"],
-      "Have a dataset? Use “Or upload GeoJSON” above to process a supported GeoJSON file."
-    ));
+    const demoBtn = createElem("button", ["btn", "btn-primary"], "Run Synthetic Demo");
+    demoBtn.type = "button";
+    demoBtn.style.marginTop = "0.25rem";
+    demoBtn.dataset.runDemo = "";
+    welcome.appendChild(demoBtn);
     container.appendChild(welcome);
     return;
   }
 
   const claims = state.report.claims || [];
   if (claims.length === 0) {
-    const empty = createElem("div", ["state-message"], "No summary claims available in this report.");
-    container.appendChild(empty);
+    container.appendChild(createElem("div", ["state-message"], "No summary claims available in this report."));
     return;
   }
 
+  const list = createElem("div", ["claims-list"]);
   claims.forEach(claim => {
-    const card = createElem("div", ["claim-card"]);
-    const textElem = createElem("div", ["claim-text"], claim.text);
-    card.appendChild(textElem);
+    const item = createElem("div", ["claim-item"]);
+    const row  = createElem("div", ["claim-accent-bar"]);
+    const bar  = createElem("div", ["claim-bar"]);
+    const text = createElem("div", ["claim-text"], claim.text);
+    row.appendChild(bar);
+    row.appendChild(text);
+    item.appendChild(row);
 
     if (Array.isArray(claim.cites) && claim.cites.length > 0) {
-      const citeContainer = createElem("div", ["citation-list"]);
+      const citeList = createElem("div", ["citation-list"]);
       claim.cites.forEach(citeId => {
-        const pill = createElem("span", ["citation-pill"], `Cite: ${citeId}`);
+        const pill = createElem("button", ["citation-pill"], `Cite: ${citeId}`);
+        pill.type = "button";
+        pill.setAttribute("aria-label", `Jump to ${citeId}`);
         pill.addEventListener("click", e => {
           e.stopPropagation();
           handleCitationClick(citeId);
         });
-        citeContainer.appendChild(pill);
+        citeList.appendChild(pill);
       });
-      card.appendChild(citeContainer);
+      item.appendChild(citeList);
     }
-
-    container.appendChild(card);
+    list.appendChild(item);
   });
+  container.appendChild(list);
 }
 
 function handleCitationClick(citeId) {
-  // Check if citeId is a hotspot
   if (state.circlesMap.has(citeId)) {
     const circle = state.circlesMap.get(citeId);
     state.map.setView(circle.getLatLng(), 15);
     circle.openPopup();
     selectHotspot(citeId);
+    switchPanel("panel-hotspots");
     return;
   }
-  // Check if citeId is a complaint
   if (state.complaintsMap.has(citeId)) {
     selectComplaint(citeId);
-    if (state.markersMap.has(citeId)) {
-      const marker = state.markersMap.get(citeId);
-      state.map.setView(marker.getLatLng(), 16);
-      marker.openPopup();
+    if (state.markersMap.has(citeId) && state.map) {
+      state.map.setView(state.markersMap.get(citeId).getLatLng(), 16);
+      state.markersMap.get(citeId).openPopup();
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Hotspots Tab
+// Hotspots Panel
 // ---------------------------------------------------------------------------
 function renderHotspotsList() {
   const container = document.getElementById("hotspots-list-container");
@@ -463,59 +720,70 @@ function renderHotspotsList() {
   container.replaceChildren();
 
   if (!state.report) {
-    container.appendChild(createElem(
-      "div",
-      ["state-message"],
-      "Hotspot analysis will appear after a dataset is processed."
-    ));
+    container.appendChild(createElem("div", ["state-message"],
+      "Hotspot analysis will appear after a dataset is processed."));
     return;
   }
 
   const hotspots = state.report.hotspots || [];
   if (hotspots.length === 0) {
-    const empty = createElem("div", ["state-message"], "No geographic hotspots detected.");
-    container.appendChild(empty);
+    container.appendChild(createElem("div", ["state-message"], "No geographic hotspots detected."));
     return;
   }
 
-  hotspots.forEach(h => {
+  hotspots.forEach((h, idx) => {
     const card = createElem("div", ["hotspot-card"]);
     card.dataset.hotspotId = h.id;
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Hotspot ${h.id}, severity ${Number(h.severity).toFixed(2)}`);
 
-    // Header
     const header = createElem("div", ["hotspot-header"]);
-    const idElem = createElem("span", ["hotspot-id"], h.id);
-    const sevTag = createElem("span", ["severity-tag"], `Severity ${Number(h.severity).toFixed(2)} / 10`);
+    header.appendChild(createElem("span", ["hotspot-id"], h.id));
 
-    if (h.severity >= 6.0) sevTag.classList.add("severity-high");
+    const sevTag = createElem("span", ["severity-tag"],
+      `Severity ${Number(h.severity).toFixed(2)} / 10`);
+    if (h.severity >= 6.0)      sevTag.classList.add("severity-high");
     else if (h.severity >= 4.0) sevTag.classList.add("severity-med");
-    else sevTag.classList.add("severity-low");
-
-    header.appendChild(idElem);
+    else                        sevTag.classList.add("severity-low");
     header.appendChild(sevTag);
     card.appendChild(header);
 
-    // Details info
-    const info = createElem("div", ["property-grid"]);
-    const countItem = createElem("div", ["property-item"]);
-    countItem.appendChild(createElem("div", ["prop-name"], "Complaints"));
-    countItem.appendChild(createElem("div", ["prop-val"], (h.complaint_ids || []).length));
-    info.appendChild(countItem);
+    const statsDiv = createElem("div", ["hotspot-stats"]);
+    const countStat = createElem("span", []);
+    const countStrong = createElem("strong", [], String((h.complaint_ids || []).length));
+    countStat.appendChild(countStrong);
+    countStat.appendChild(document.createTextNode(" complaints"));
+    statsDiv.appendChild(countStat);
+    const radiusStat = createElem("span", []);
+    const radStrong = createElem("strong", [], `${Number(h.radius_m).toFixed(0)} m`);
+    radiusStat.appendChild(radStrong);
+    radiusStat.appendChild(document.createTextNode(" radius"));
+    statsDiv.appendChild(radiusStat);
+    card.appendChild(statsDiv);
 
-    const radiusItem = createElem("div", ["property-item"]);
-    radiusItem.appendChild(createElem("div", ["prop-name"], "Cluster Radius"));
-    radiusItem.appendChild(createElem("div", ["prop-val"], `${Number(h.radius_m).toFixed(1)} m`));
-    info.appendChild(radiusItem);
-
-    card.appendChild(info);
-
-    card.addEventListener("click", () => {
+    const clickHandler = () => {
       selectHotspot(h.id);
       if (isValidCoord(h.centroid[0], h.centroid[1]) && state.map) {
         state.map.setView([h.centroid[0], h.centroid[1]], 15);
-        if (state.circlesMap.has(h.id)) {
-          state.circlesMap.get(h.id).openPopup();
-        }
+        const circle = state.circlesMap.get(h.id);
+        if (circle) circle.openPopup();
+      }
+    };
+    card.addEventListener("click", clickHandler);
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); clickHandler(); }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const cards = [...document.querySelectorAll(".hotspot-card")];
+        const next = cards[idx + 1];
+        if (next) next.focus();
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const cards = [...document.querySelectorAll(".hotspot-card")];
+        const prev = cards[idx - 1];
+        if (prev) prev.focus();
       }
     });
 
@@ -526,187 +794,138 @@ function renderHotspotsList() {
 function selectHotspot(hotspotId) {
   state.selectedHotspotId = hotspotId;
   document.querySelectorAll(".hotspot-card").forEach(c => {
-    c.classList.toggle("selected", c.dataset.hotspotId === hotspotId);
+    const active = c.dataset.hotspotId === hotspotId;
+    c.classList.toggle("selected", active);
+    c.setAttribute("aria-selected", String(active));
   });
 
-  // Filter complaints list to only show complaints in this hotspot
-  const hotspot = (state.report.hotspots || []).find(h => h.id === hotspotId);
+  const hotspot = (state.report?.hotspots || []).find(h => h.id === hotspotId);
   if (hotspot && Array.isArray(hotspot.complaint_ids)) {
-    renderFilteredComplaints(new Set(hotspot.complaint_ids));
-    switchTab("tab-complaints");
+    renderFilteredComplaintsById(new Set(hotspot.complaint_ids));
+    switchPanel("panel-issues");
   }
 }
 
 // ---------------------------------------------------------------------------
-// Complaints Tab & Filtering
+// Complaints / Issues Panel
 // ---------------------------------------------------------------------------
-function setupFilterControls() {
-  const statusSelect = document.getElementById("filter-status");
-  const catSelect = document.getElementById("filter-category");
-  const verdictSelect = document.getElementById("filter-verdict");
-  const searchInput = document.getElementById("search-input");
-  const resetBtn = document.getElementById("btn-reset-filters");
-
-  if (statusSelect) {
-    statusSelect.addEventListener("change", e => {
-      state.filterStatus = e.target.value;
-      applyFilters();
-    });
-  }
-  if (catSelect) {
-    catSelect.addEventListener("change", e => {
-      state.filterCategory = e.target.value;
-      applyFilters();
-    });
-  }
-  if (verdictSelect) {
-    verdictSelect.addEventListener("change", e => {
-      state.filterVerdict = e.target.value;
-      applyFilters();
-    });
-  }
-  if (searchInput) {
-    searchInput.addEventListener("input", e => {
-      state.searchQuery = e.target.value.toLowerCase().trim();
-      applyFilters();
-    });
-  }
-  if (resetBtn) {
-    resetBtn.addEventListener("click", () => {
-      if (statusSelect) statusSelect.value = "all";
-      if (catSelect) catSelect.value = "all";
-      if (verdictSelect) verdictSelect.value = "all";
-      if (searchInput) searchInput.value = "";
-      state.filterStatus = "all";
-      state.filterCategory = "all";
-      state.filterVerdict = "all";
-      state.searchQuery = "";
-      state.selectedHotspotId = null;
-      applyFilters();
-    });
-  }
-}
-
-function applyFilters() {
-  renderComplaintsList();
-  updateMapMarkersVisibility();
-}
-
 function renderComplaintsList() {
-  renderFilteredComplaints(null);
+  renderFilteredComplaintsById(null);
 }
 
-function renderFilteredComplaints(allowedIdSet = null) {
+function renderFilteredComplaintsById(allowedIdSet = null) {
   const container = document.getElementById("complaints-list-container");
   if (!container) return;
   container.replaceChildren();
 
   if (!state.report) {
-    container.appendChild(createElem(
-      "div",
-      ["state-message"],
-      "Complaints will appear here after a dataset is processed."
-    ));
+    container.appendChild(createElem("div", ["state-message"],
+      "Complaints will appear here after a dataset is processed."));
     return;
   }
 
-  const allComplaints = state.report.complaints || [];
-  const filtered = allComplaints.filter(c => {
-    if (allowedIdSet && !allowedIdSet.has(c.id)) return false;
-    if (state.filterStatus !== "all" && c.status !== state.filterStatus) return false;
-    if (state.filterCategory !== "all" && c.category !== state.filterCategory) return false;
-    if (state.filterVerdict !== "all") {
-      const v = state.verdictsMap.get(c.id);
-      if (state.filterVerdict === "none" && v) return false;
-      if (state.filterVerdict !== "none" && (!v || v.verdict !== state.filterVerdict)) return false;
-    }
-    if (state.searchQuery) {
-      const textMatch = (c.text || "").toLowerCase().includes(state.searchQuery);
-      const idMatch = (c.id || "").toLowerCase().includes(state.searchQuery);
-      if (!textMatch && !idMatch) return false;
-    }
-    return true;
-  });
+  const filtered = getFilteredComplaints(allowedIdSet);
+  renderComplaintItems(container, filtered);
+}
 
-  if (filtered.length === 0) {
-    const message = allComplaints.length === 0
+function renderComplaintItems(container, complaints, limit = 100) {
+  if (complaints.length === 0) {
+    const msg = state.report && state.report.complaints.length === 0
       ? "No complaints are available in this report."
       : "No complaints match current filters.";
-    const empty = createElem("div", ["state-message"], message);
-    container.appendChild(empty);
+    container.appendChild(createElem("div", ["state-message"], msg));
     return;
   }
 
-  // Render first 50 complaints for performance if very large list
-  const displayLimit = Math.min(filtered.length, 100);
-  for (let i = 0; i < displayLimit; i++) {
-    const c = filtered[i];
+  const shown = Math.min(complaints.length, limit);
+  complaints.slice(0, shown).forEach((c, idx) => {
     const item = createElem("div", ["complaint-item"]);
     item.dataset.complaintId = c.id;
+    item.setAttribute("tabindex", "0");
+    item.setAttribute("role", "button");
+    item.setAttribute("aria-label", `Complaint ${c.id}: ${c.category} ${c.status}`);
 
     const topRow = createElem("div", ["complaint-item-top"]);
     topRow.appendChild(createElem("span", ["complaint-id"], c.id));
 
     const badgeGroup = createElem("div", ["badge-group"]);
-    const catBadge = createElem("span", ["badge", c.status], `${c.category} • ${c.status}`);
-    badgeGroup.appendChild(catBadge);
+    badgeGroup.appendChild(createElem("span", ["badge", c.status], `${c.category} · ${c.status}`));
 
     const verdict = state.verdictsMap.get(c.id);
     if (verdict) {
-      const vBadge = createElem("span", ["badge", verdict.verdict], verdict.verdict);
-      badgeGroup.appendChild(vBadge);
+      badgeGroup.appendChild(createElem("span", ["badge", verdict.verdict], verdict.verdict));
     }
     topRow.appendChild(badgeGroup);
     item.appendChild(topRow);
 
-    const textSnippet = (c.text || "").length > 80 ? (c.text || "").substring(0, 77) + "..." : c.text;
-    const bodyElem = createElem("div", ["complaint-snippet"], textSnippet);
-    item.appendChild(bodyElem);
+    const snippet = (c.text || "").length > 80
+      ? (c.text || "").substring(0, 77) + "…"
+      : (c.text || "");
+    item.appendChild(createElem("div", ["complaint-snippet"], snippet));
 
-    item.addEventListener("click", () => {
-      selectComplaint(c.id);
+    const clickHandler = () => selectComplaint(c.id);
+    item.addEventListener("click", clickHandler);
+    item.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); clickHandler(); }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const items = [...container.querySelectorAll(".complaint-item")];
+        const next = items[idx + 1];
+        if (next) next.focus();
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const items = [...container.querySelectorAll(".complaint-item")];
+        const prev = items[idx - 1];
+        if (prev) prev.focus();
+      }
     });
 
     container.appendChild(item);
-  }
+  });
 
-  if (filtered.length > displayLimit) {
-    const note = createElem("div", ["state-message"], `Showing 100 of ${filtered.length} complaints. Refine filters to narrow search.`);
-    container.appendChild(note);
+  if (complaints.length > limit) {
+    container.appendChild(createElem("div", ["state-message"],
+      `Showing ${limit} of ${complaints.length} complaints. Refine filters to narrow.`));
   }
 }
 
 // ---------------------------------------------------------------------------
-// Inspection / Repair Checks View
+// Select Complaint
 // ---------------------------------------------------------------------------
-function renderInspectionEmptyState() {
-  const container = document.getElementById("inspection-detail-container");
-  if (!container) return;
-  const message = state.report
-    ? "Select a complaint on the map or from the Complaints tab to view its verification checks and photo evidence."
-    : "Verification results will appear here after a dataset is processed.";
-  container.replaceChildren(createElem("div", ["state-message"], message));
-}
-
 function selectComplaint(complaintId) {
   state.selectedComplaintId = complaintId;
 
   document.querySelectorAll(".complaint-item").forEach(item => {
-    item.classList.toggle("selected", item.dataset.complaintId === complaintId);
+    const active = item.dataset.complaintId === complaintId;
+    item.classList.toggle("selected", active);
+    item.setAttribute("aria-selected", String(active));
   });
 
   const complaint = state.complaintsMap.get(complaintId);
   if (!complaint) return;
 
   renderInspectionDetail(complaint);
-  switchTab("tab-inspection");
+  switchPanel("panel-proof");
+  syncProofPage();
 
-  // Center on map marker if available
   if (state.markersMap.has(complaintId) && state.map) {
     const marker = state.markersMap.get(complaintId);
     state.map.setView(marker.getLatLng(), 16);
     marker.openPopup();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inspection / Proof-of-Fix Panel
+// ---------------------------------------------------------------------------
+function renderInspectionEmptyState() {
+  const container = document.getElementById("inspection-detail-container");
+  if (!container) return;
+  const msg = state.report
+    ? "Select a complaint on the map or from the Issues panel to view its verification checks."
+    : "Verification results will appear here after a dataset is processed.";
+  container.replaceChildren(createElem("div", ["state-message"], msg));
 }
 
 function renderInspectionDetail(complaint) {
@@ -716,93 +935,94 @@ function renderInspectionDetail(complaint) {
 
   const verdict = state.verdictsMap.get(complaint.id);
 
-  // 1. Complaint Overview Card
+  // 1. Complaint overview card
   const overviewCard = createElem("div", ["inspection-card"]);
   overviewCard.appendChild(createElem("div", ["inspection-title"], `Complaint: ${complaint.id}`));
+  const grid = createElem("div", ["property-grid"]);
+  addProp(grid, "Category",    complaint.category);
+  addProp(grid, "Status",      complaint.status);
+  addProp(grid, "Coordinates",
+    isValidCoord(complaint.lat, complaint.lon)
+      ? `${complaint.lat.toFixed(5)}, ${complaint.lon.toFixed(5)}`
+      : "Unavailable"
+  );
+  addProp(grid, "Filed at",
+    complaint.created_at
+      ? new Date(complaint.created_at).toLocaleString()
+      : "Unknown"
+  );
+  overviewCard.appendChild(grid);
 
-  const propGrid = createElem("div", ["property-grid"]);
-  addProp(propGrid, "Category", complaint.category);
-  addProp(propGrid, "Status", complaint.status);
-  addProp(propGrid, "Coordinates", isValidCoord(complaint.lat, complaint.lon) ? `${complaint.lat.toFixed(5)}, ${complaint.lon.toFixed(5)}` : "Unavailable");
-  addProp(propGrid, "Filed At", complaint.created_at ? new Date(complaint.created_at).toLocaleString() : "Unknown");
-  overviewCard.appendChild(propGrid);
-
-  const textBlock = createElem("div", ["inspection-desc"]);
-  textBlock.style.marginTop = "0.75rem";
-  textBlock.appendChild(createElem("strong", [], "Description: "));
+  const textBlock = createElem("div", []);
+  textBlock.style.marginTop = "0.65rem";
+  textBlock.style.fontSize  = "0.85rem";
+  const strong = createElem("strong", [], "Description: ");
+  textBlock.appendChild(strong);
   textBlock.appendChild(document.createTextNode(complaint.text || "No description provided."));
   overviewCard.appendChild(textBlock);
-
   container.appendChild(overviewCard);
 
-  // 2. Proof-of-Fix Repair Checks Card
+  // 2. Proof-of-fix checks card
   const checkCard = createElem("div", ["inspection-card"]);
   checkCard.appendChild(createElem("div", ["inspection-title"], "Proof-of-Fix Verification Checks"));
 
   if (verdict) {
-    const vHeader = createElem("div", ["verdict-summary"]);
-    vHeader.style.marginBottom = "0.75rem";
-    vHeader.appendChild(document.createTextNode("Overall Closure Verdict: "));
+    const vRow = createElem("div", ["verdict-summary"]);
+    vRow.appendChild(document.createTextNode("Overall Verdict: "));
     const vBadge = createElem("span", ["badge", verdict.verdict], verdict.verdict);
-    vBadge.style.fontSize = "0.85rem";
-    vHeader.appendChild(vBadge);
-    vHeader.appendChild(document.createTextNode(` (Confidence: ${(verdict.confidence * 100).toFixed(0)}%)`));
-    checkCard.appendChild(vHeader);
+    vRow.appendChild(vBadge);
+    vRow.appendChild(document.createTextNode(` (Confidence: ${(verdict.confidence * 100).toFixed(0)}%)`));
+    checkCard.appendChild(vRow);
 
-    // Checks Table
     const table = createElem("table", ["checks-table"]);
+    table.setAttribute("aria-label", `Verification checks for ${complaint.id}`);
     const thead = createElem("thead");
-    const trH = createElem("tr");
-    trH.appendChild(createElem("th", [], "Check Name"));
-    trH.appendChild(createElem("th", [], "Result"));
-    trH.appendChild(createElem("th", [], "Measured Value"));
-    trH.appendChild(createElem("th", [], "Explanation"));
-    thead.appendChild(trH);
+    const trh = createElem("tr");
+    ["Check Name", "Result", "Measured Value", "Explanation"].forEach(h => {
+      trh.appendChild(createElem("th", [], h));
+    });
+    thead.appendChild(trh);
     table.appendChild(thead);
 
     const tbody = createElem("tbody");
     (verdict.checks || []).forEach(chk => {
-      const row = createElem("tr");
-      row.appendChild(createElem("td", [], chk.name));
+      const tr = createElem("tr");
+      tr.appendChild(createElem("td", [], chk.name));
 
       const resTd = createElem("td");
-      let statusClass = "inconclusive";
-      let statusLabel = "INCONCLUSIVE";
-      if (chk.passed === true) {
-        statusClass = "verified";
-        statusLabel = "PASS";
-      } else if (chk.passed === false) {
-        statusClass = "suspect";
-        statusLabel = "FAIL";
-      }
-      resTd.appendChild(createElem("span", ["badge", statusClass], statusLabel));
-      row.appendChild(resTd);
+      let cls = "inconclusive", lbl = "INCONCLUSIVE";
+      if (chk.passed === true)  { cls = "verified"; lbl = "PASS"; }
+      if (chk.passed === false) { cls = "suspect";  lbl = "FAIL"; }
+      resTd.appendChild(createElem("span", ["badge", cls], lbl));
+      tr.appendChild(resTd);
 
-      const valText = chk.value !== null && chk.value !== undefined ? (typeof chk.value === "number" ? chk.value.toFixed(2) : String(chk.value)) : "—";
-      row.appendChild(createElem("td", [], valText));
-      row.appendChild(createElem("td", [], chk.detail || ""));
-      tbody.appendChild(row);
+      const val = chk.value !== null && chk.value !== undefined
+        ? (typeof chk.value === "number" ? chk.value.toFixed(2) : String(chk.value))
+        : "—";
+      tr.appendChild(createElem("td", [], val));
+      tr.appendChild(createElem("td", [], chk.detail || ""));
+      tbody.appendChild(tr);
     });
     table.appendChild(tbody);
     checkCard.appendChild(table);
   } else {
-    const noVerdict = createElem("div", ["state-message"], complaint.status === "open" ? "Complaint is currently open; no closure verification checks performed." : "No verification verdict record available for this closed complaint.");
-    checkCard.appendChild(noVerdict);
+    const msg = complaint.status === "open"
+      ? "Complaint is currently open; no closure verification checks performed."
+      : "No verification verdict record available for this closed complaint.";
+    checkCard.appendChild(createElem("div", ["state-message"], msg));
   }
   container.appendChild(checkCard);
 
-  // 3. Evidence Gallery Card
+  // 3. Evidence gallery
   const galleryCard = createElem("div", ["inspection-card"]);
   galleryCard.appendChild(createElem("div", ["inspection-title"], "Photo Evidence"));
-
   const gallery = createElem("div", ["evidence-gallery"]);
 
-  // Complaint defect media (initial)
   const initialMedia = (complaint.media && complaint.media[0]) ? complaint.media[0] : null;
   gallery.appendChild(createMediaThumbnail("Initial Complaint Photo", initialMedia));
 
-  // Closure proof media
-  const closureMedia = (complaint.closure && complaint.closure.media && complaint.closure.media[0]) ? complaint.closure.media[0] : null;
+  const closureMedia = (complaint.closure && complaint.closure.media && complaint.closure.media[0])
+    ? complaint.closure.media[0] : null;
   gallery.appendChild(createMediaThumbnail("Submitted Repair Photo", closureMedia));
 
   galleryCard.appendChild(gallery);
@@ -817,29 +1037,27 @@ function addProp(grid, name, val) {
 }
 
 function createMediaThumbnail(caption, mediaObj) {
-  const container = createElem("div", ["evidence-thumbnail"]);
+  const thumb = createElem("div", ["evidence-thumbnail"]);
   const imgBox = createElem("div", ["evidence-img-container"]);
 
   if (mediaObj && mediaObj.path) {
-    const resolvedUrl = resolveMediaPath(mediaObj.path);
+    const url = resolveMediaPath(mediaObj.path);
     if (mediaObj.type === "video") {
       const video = document.createElement("video");
-      video.src = resolvedUrl;
+      video.src = url;
       video.controls = true;
       video.preload = "metadata";
       video.onerror = () => {
-        imgBox.replaceChildren();
-        imgBox.appendChild(createElem("div", ["evidence-placeholder"], "Evidence video unavailable"));
+        imgBox.replaceChildren(createElem("div", ["evidence-placeholder"], "Evidence video unavailable"));
       };
       imgBox.appendChild(video);
     } else {
       const img = document.createElement("img");
-      img.src = resolvedUrl;
+      img.src = url;
       img.alt = caption;
       img.loading = "lazy";
       img.onerror = () => {
-        imgBox.replaceChildren();
-        imgBox.appendChild(createElem("div", ["evidence-placeholder"], "Evidence photo unavailable"));
+        imgBox.replaceChildren(createElem("div", ["evidence-placeholder"], "Evidence photo unavailable"));
       };
       imgBox.appendChild(img);
     }
@@ -847,72 +1065,179 @@ function createMediaThumbnail(caption, mediaObj) {
     imgBox.appendChild(createElem("div", ["evidence-placeholder"], "No photo submitted"));
   }
 
-  container.appendChild(imgBox);
-  container.appendChild(createElem("div", ["evidence-caption"], caption));
-  return container;
+  thumb.appendChild(imgBox);
+  thumb.appendChild(createElem("div", ["evidence-caption"], caption));
+  return thumb;
 }
 
 // ---------------------------------------------------------------------------
-// Leaflet Map & Overlays (Issue #16)
+// Full-page tab sync helpers
+// ---------------------------------------------------------------------------
+function syncIssuesPageList() {
+  const container = document.getElementById("issues-page-list");
+  if (!container) return;
+  container.replaceChildren();
+  const complaints = getFilteredComplaints();
+  renderComplaintItems(container, complaints);
+}
+
+function syncHotspotsPageList() {
+  const container = document.getElementById("hotspots-page-list");
+  if (!container) return;
+  container.replaceChildren();
+  if (!state.report) {
+    container.appendChild(createElem("div", ["state-message"],
+      "Hotspot analysis will appear after a dataset is processed."));
+    return;
+  }
+  const hotspots = state.report.hotspots || [];
+  if (hotspots.length === 0) {
+    container.appendChild(createElem("div", ["state-message"], "No geographic hotspots detected."));
+    return;
+  }
+  hotspots.forEach(h => {
+    const card = createElem("div", ["hotspot-card"]);
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", `Hotspot ${h.id}, severity ${Number(h.severity).toFixed(2)}`);
+
+    const header = createElem("div", ["hotspot-header"]);
+    header.appendChild(createElem("span", ["hotspot-id"], h.id));
+    const sev = createElem("span", ["severity-tag"], `Sev ${Number(h.severity).toFixed(2)}`);
+    if (h.severity >= 6) sev.classList.add("severity-high");
+    else if (h.severity >= 4) sev.classList.add("severity-med");
+    else sev.classList.add("severity-low");
+    header.appendChild(sev);
+    card.appendChild(header);
+
+    const statsDiv = createElem("div", ["hotspot-stats"]);
+    const countStat = createElem("span", []);
+    const countStrong = createElem("strong", [], String((h.complaint_ids || []).length));
+    countStat.appendChild(countStrong);
+    countStat.appendChild(document.createTextNode(" complaints"));
+    statsDiv.appendChild(countStat);
+    card.appendChild(statsDiv);
+
+    const clickHandler = () => {
+      selectHotspot(h.id);
+      switchPage("overview");
+      switchPanel("panel-hotspots");
+      if (isValidCoord(h.centroid[0], h.centroid[1]) && state.map) {
+        state.map.setView([h.centroid[0], h.centroid[1]], 15);
+        const circle = state.circlesMap.get(h.id);
+        if (circle) circle.openPopup();
+      }
+    };
+    card.addEventListener("click", clickHandler);
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        clickHandler();
+      }
+    });
+
+    container.appendChild(card);
+  });
+}
+
+function syncBriefingsPage() {
+  const container = document.getElementById("briefings-claims-container");
+  if (!container) return;
+  container.replaceChildren();
+  if (!state.report || !state.report.claims.length) {
+    container.appendChild(createElem("div", ["state-message"],
+      "Briefing claims will appear after a dataset is processed."));
+    return;
+  }
+  state.report.claims.forEach(claim => {
+    const item = createElem("div", ["claim-item"]);
+    const row = createElem("div", ["claim-accent-bar"]);
+    row.appendChild(createElem("div", ["claim-bar"]));
+    row.appendChild(createElem("div", ["claim-text"], claim.text));
+    item.appendChild(row);
+    container.appendChild(item);
+  });
+}
+
+function syncProofPage() {
+  const container = document.getElementById("proof-page-container");
+  if (!container) return;
+  if (!state.selectedComplaintId) {
+    container.replaceChildren(createElem("div", ["state-message"],
+      "Select a complaint from the Issues tab or map to view its verification checks."));
+    return;
+  }
+  const complaint = state.complaintsMap.get(state.selectedComplaintId);
+  if (!complaint) return;
+  container.replaceChildren();
+  const verdict = state.verdictsMap.get(complaint.id);
+  if (verdict) {
+    const card = createElem("div", ["inspection-card"]);
+    card.appendChild(createElem("div", ["inspection-title"], `Proof of Fix: ${complaint.id}`));
+    const vRow = createElem("div", ["verdict-summary"]);
+    vRow.appendChild(document.createTextNode("Verdict: "));
+    vRow.appendChild(createElem("span", ["badge", verdict.verdict], verdict.verdict));
+    card.appendChild(vRow);
+    container.appendChild(card);
+  } else {
+    container.appendChild(createElem("div", ["state-message"],
+      `No verdict available for complaint ${state.selectedComplaintId}.`));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Leaflet Map
 // ---------------------------------------------------------------------------
 function initOrUpdateMap() {
-  const mapElement = document.getElementById("map");
-  if (!mapElement) return;
+  const mapEl = document.getElementById("map");
+  if (!mapEl) return;
 
   if (typeof L === "undefined") {
-    mapElement.replaceChildren();
-    const errMsg = createElem("div", ["state-message"], "Leaflet mapping library could not be loaded. Data remains fully accessible via sidebar panels.");
-    mapElement.appendChild(errMsg);
+    mapEl.replaceChildren(createElem("div", ["state-message"],
+      "Leaflet mapping library could not be loaded. Data remains accessible via sidebar panels."));
     return;
   }
 
-  // First time initialization
   if (!state.map) {
     try {
       state.map = L.map("map", {
-        center: [12.9716, 77.5946], // Default Bengaluru
+        center: [12.9716, 77.5946],
         zoom: 12,
-        zoomControl: true
+        zoomControl: true,
       });
 
-      const tileLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
-        maxZoom: 19
+      const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+        maxZoom: 19,
       });
+      tiles.on("tileerror", e => console.warn("Map tile failed:", e));
+      tiles.addTo(state.map);
 
-      tileLayer.on("tileerror", e => {
-        console.warn("Tile request failed; map tiles may be temporarily offline.", e);
-      });
-
-      tileLayer.addTo(state.map);
-
-      // Feature layer groups
-      state.mapLayers.hotspots = L.featureGroup().addTo(state.map);
+      state.mapLayers.hotspots   = L.featureGroup().addTo(state.map);
       state.mapLayers.complaints = L.featureGroup().addTo(state.map);
 
-      // Layer checkboxes
-      const toggleHotspots = document.getElementById("toggle-hotspots");
+      const toggleHotspots   = document.getElementById("toggle-hotspots");
       const toggleComplaints = document.getElementById("toggle-complaints");
-
       if (toggleHotspots) {
         toggleHotspots.addEventListener("change", e => {
-          if (e.target.checked) state.map.addLayer(state.mapLayers.hotspots);
-          else state.map.removeLayer(state.mapLayers.hotspots);
+          e.target.checked
+            ? state.map.addLayer(state.mapLayers.hotspots)
+            : state.map.removeLayer(state.mapLayers.hotspots);
         });
       }
       if (toggleComplaints) {
         toggleComplaints.addEventListener("change", e => {
-          if (e.target.checked) state.map.addLayer(state.mapLayers.complaints);
-          else state.map.removeLayer(state.mapLayers.complaints);
+          e.target.checked
+            ? state.map.addLayer(state.mapLayers.complaints)
+            : state.map.removeLayer(state.mapLayers.complaints);
         });
       }
 
-      window.addEventListener("resize", () => {
-        if (state.map) state.map.invalidateSize();
-      });
-    } catch (exc) {
-      console.error("Failed to initialize Leaflet map:", exc);
-      mapElement.replaceChildren(createElem("div", ["state-message"], "Error initializing map overlay."));
+      window.addEventListener("resize", () => state.map && state.map.invalidateSize());
+    } catch (err) {
+      console.error("Map init failed:", err);
+      mapEl.replaceChildren(createElem("div", ["state-message"], "Error initializing map overlay."));
       return;
     }
   }
@@ -922,149 +1247,985 @@ function initOrUpdateMap() {
 
 function renderMapOverlays() {
   if (!state.map) return;
-
   state.mapLayers.hotspots.clearLayers();
   state.mapLayers.complaints.clearLayers();
   state.markersMap.clear();
   state.circlesMap.clear();
 
   const bounds = L.latLngBounds();
-  let hasValidCoords = false;
+  let hasCoords = false;
 
-  // 1. Hotspot Circles
-  const hotspots = state.report?.hotspots || [];
-  hotspots.forEach(h => {
+  // Hotspot circles
+  (state.report?.hotspots || []).forEach(h => {
     if (!h.centroid || !isValidCoord(h.centroid[0], h.centroid[1])) return;
-    const lat = h.centroid[0];
-    const lon = h.centroid[1];
-    hasValidCoords = true;
-    bounds.extend([lat, lon]);
+    hasCoords = true;
+    bounds.extend([h.centroid[0], h.centroid[1]]);
 
-    let circleColor = "#10b981"; // Low severity
-    if (h.severity >= 6.0) circleColor = "#ef4444";
-    else if (h.severity >= 4.0) circleColor = "#f59e0b";
+    let color = "#16a34a";
+    if (h.severity >= 6.0)      color = "#dc2626";
+    else if (h.severity >= 4.0) color = "#d97706";
 
-    const circle = L.circle([lat, lon], {
-      color: circleColor,
-      fillColor: circleColor,
-      fillOpacity: 0.25,
-      weight: 2,
-      radius: h.radius_m || 50
+    const circle = L.circle([h.centroid[0], h.centroid[1]], {
+      color, fillColor: color, fillOpacity: 0.2, weight: 2,
+      radius: h.radius_m || 50,
     });
 
-    // Hotspot Popup
-    const popupContent = createElem("div", ["map-popup"]);
-    popupContent.appendChild(createElem("strong", [], h.id));
-    popupContent.appendChild(document.createElement("br"));
-    popupContent.appendChild(document.createTextNode(`Severity: ${Number(h.severity).toFixed(2)} / 10`));
-    popupContent.appendChild(document.createElement("br"));
-    popupContent.appendChild(document.createTextNode(`Complaints: ${(h.complaint_ids || []).length}`));
-    circle.bindPopup(popupContent);
+    const popup = createElem("div", []);
+    const title = createElem("div", ["map-popup-title"], h.id);
+    const detail = createElem("div", ["map-popup-detail"]);
+    detail.textContent = `Severity: ${Number(h.severity).toFixed(2)} / 10 · ${(h.complaint_ids || []).length} complaints`;
+    popup.appendChild(title);
+    popup.appendChild(detail);
+    circle.bindPopup(popup);
 
     circle.on("click", () => {
       selectHotspot(h.id);
+      switchPanel("panel-hotspots");
     });
 
     state.mapLayers.hotspots.addLayer(circle);
     state.circlesMap.set(h.id, circle);
   });
 
-  // 2. Complaint Markers
-  const complaints = state.report?.complaints || [];
-  complaints.forEach(c => {
+  // Complaint markers
+  (state.report?.complaints || []).forEach(c => {
     if (!isValidCoord(c.lat, c.lon)) return;
-    hasValidCoords = true;
+    hasCoords = true;
     bounds.extend([c.lat, c.lon]);
 
     const verdict = state.verdictsMap.get(c.id);
-
-    // Color code based on status and verdict
-    let markerColor = "#38bdf8"; // Open: cyan
+    let color = "#0284c7";
     if (c.status === "closed") {
-      if (verdict && verdict.verdict === "verified") markerColor = "#10b981"; // Green
-      else if (verdict && verdict.verdict === "suspect") markerColor = "#ef4444"; // Red
-      else markerColor = "#f59e0b"; // Inconclusive
+      if (verdict?.verdict === "verified")     color = "#16a34a";
+      else if (verdict?.verdict === "suspect") color = "#dc2626";
+      else                                     color = "#d97706";
     }
 
     const marker = L.circleMarker([c.lat, c.lon], {
-      radius: 6,
-      fillColor: markerColor,
-      color: "#0f172a",
-      weight: 1.5,
-      opacity: 1,
-      fillOpacity: 0.9
+      radius: 5.5, fillColor: color, color: "#ffffff",
+      weight: 1.5, opacity: 1, fillOpacity: 0.9,
     });
 
-    // Popup
-    const popupBox = createElem("div", ["map-popup"]);
-    popupBox.appendChild(createElem("strong", [], c.id));
-    popupBox.appendChild(document.createElement("br"));
-    popupBox.appendChild(document.createTextNode(`${c.category} • ${c.status}`));
+    const popup = createElem("div", []);
+    const title = createElem("div", ["map-popup-title"], c.id);
+    const detail = createElem("div", ["map-popup-detail"]);
+    detail.textContent = `${c.category} · ${c.status}`;
     if (verdict) {
-      popupBox.appendChild(document.createElement("br"));
-      popupBox.appendChild(document.createTextNode(`Verdict: ${verdict.verdict}`));
+      const vSpan = createElem("span", ["badge", verdict.verdict], verdict.verdict);
+      vSpan.style.display = "inline-flex";
+      vSpan.style.marginTop = "0.3rem";
+      detail.appendChild(document.createElement("br"));
+      detail.appendChild(document.createTextNode("Verdict: "));
+      detail.appendChild(vSpan);
     }
-    const inspectBtn = createElem("button", ["tab-btn"], "Inspect Details");
-    inspectBtn.style.marginTop = "0.5rem";
-    inspectBtn.style.padding = "0.2rem 0.5rem";
-    inspectBtn.style.fontSize = "0.75rem";
-    inspectBtn.style.border = "1px solid #3b82f6";
-    inspectBtn.addEventListener("click", () => {
-      selectComplaint(c.id);
-    });
-    popupBox.appendChild(document.createElement("br"));
-    popupBox.appendChild(inspectBtn);
+    const inspectBtn = createElem("button", ["map-popup-inspect"], "Inspect Details");
+    inspectBtn.type = "button";
+    inspectBtn.addEventListener("click", () => selectComplaint(c.id));
+    popup.appendChild(title);
+    popup.appendChild(detail);
+    popup.appendChild(document.createElement("br"));
+    popup.appendChild(inspectBtn);
+    marker.bindPopup(popup);
 
-    marker.bindPopup(popupBox);
-
-    marker.on("click", () => {
-      selectComplaint(c.id);
-    });
+    marker.on("click", () => selectComplaint(c.id));
 
     state.mapLayers.complaints.addLayer(marker);
     state.markersMap.set(c.id, marker);
   });
 
-  if (hasValidCoords && bounds.isValid()) {
-    state.map.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+  if (hasCoords && bounds.isValid()) {
+    state.map.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 });
+  }
+
+  updateMapCountBadge();
+}
+
+function fitMapToBounds() {
+  if (!state.map) return;
+  if (state.mapLayers.complaints && state.mapLayers.hotspots) {
+    const combined = L.featureGroup([
+      state.mapLayers.complaints,
+      state.mapLayers.hotspots,
+    ]);
+    const bounds = combined.getBounds();
+    if (bounds.isValid()) {
+      state.map.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 });
+    }
+  } else {
+    state.map.setView([12.9716, 77.5946], 12);
   }
 }
 
 function updateMapMarkersVisibility() {
-  const complaints = state.report?.complaints || [];
-  complaints.forEach(c => {
+  (state.report?.complaints || []).forEach(c => {
     const marker = state.markersMap.get(c.id);
     if (!marker) return;
 
     let visible = true;
     if (state.selectedHotspotId) {
-      const hotspot = (state.report?.hotspots || []).find(h => h.id === state.selectedHotspotId);
-      if (hotspot && !hotspot.complaint_ids.includes(c.id)) visible = false;
+      const h = (state.report?.hotspots || []).find(x => x.id === state.selectedHotspotId);
+      if (h && !h.complaint_ids.includes(c.id)) visible = false;
     }
-    if (visible && state.filterStatus !== "all" && c.status !== state.filterStatus) visible = false;
+    if (visible && state.filterStatus   !== "all" && c.status   !== state.filterStatus)   visible = false;
     if (visible && state.filterCategory !== "all" && c.category !== state.filterCategory) visible = false;
-    if (visible && state.filterVerdict !== "all") {
+    if (visible && state.filterVerdict  !== "all") {
       const v = state.verdictsMap.get(c.id);
       if (state.filterVerdict === "none" && v) visible = false;
       if (state.filterVerdict !== "none" && (!v || v.verdict !== state.filterVerdict)) visible = false;
     }
     if (visible && state.searchQuery) {
-      const textMatch = (c.text || "").toLowerCase().includes(state.searchQuery);
-      const idMatch = (c.id || "").toLowerCase().includes(state.searchQuery);
-      if (!textMatch && !idMatch) visible = false;
+      const tm = (c.text || "").toLowerCase().includes(state.searchQuery);
+      const im = (c.id   || "").toLowerCase().includes(state.searchQuery);
+      if (!tm && !im) visible = false;
     }
 
     if (visible) {
-      if (!state.mapLayers.complaints.hasLayer(marker)) {
-        state.mapLayers.complaints.addLayer(marker);
-      }
+      if (!state.mapLayers.complaints.hasLayer(marker)) state.mapLayers.complaints.addLayer(marker);
     } else {
-      if (state.mapLayers.complaints.hasLayer(marker)) {
-        state.mapLayers.complaints.removeLayer(marker);
-      }
+      if (state.mapLayers.complaints.hasLayer(marker)) state.mapLayers.complaints.removeLayer(marker);
     }
   });
 }
 
-// Start on DOM ready
+// ---------------------------------------------------------------------------
+// Speech Synthesis Briefing
+// ---------------------------------------------------------------------------
+function initSpeech() {
+  if (!("speechSynthesis" in window)) return;
+  state.speechSynth = window.speechSynthesis;
+
+  ["btn-listen-briefing", "btn-listen-briefing-full"].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener("click", () => toggleSpeech(btn));
+  });
+}
+
+function toggleSpeech(btn) {
+  if (!state.speechSynth) {
+    btn.textContent = "🔇 Speech not available in this browser.";
+    return;
+  }
+  if (state.isSpeaking || state.speechSynth.speaking) {
+    state.speechSynth.cancel();
+    state.isSpeaking = false;
+    updateSpeechButtons(false);
+    return;
+  }
+
+  // Build briefing text
+  if (!state.report) {
+    const utt = new SpeechSynthesisUtterance("No report loaded. Run a demo or upload data to generate a briefing.");
+    state.speechSynth.speak(utt);
+    return;
+  }
+
+  const claims  = (state.report.claims  || []).map(c => c.text).join(". ");
+  const stats   = state.report.stats || {};
+  const total   = stats.total_complaints ?? state.report.complaints.length;
+  const hotspot = stats.total_hotspots   ?? state.report.hotspots.length;
+  const text    = `City Briefing for Bengaluru. ${total} complaints in the dataset. ${hotspot} geographic hotspots identified. ${claims}`;
+
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate  = 0.95;
+  utt.pitch = 1.0;
+
+  // Immediately set speaking flag to prevent race conditions on fast repeated clicks
+  state.isSpeaking = true;
+  updateSpeechButtons(true);
+
+  utt.onstart = () => { state.isSpeaking = true;  updateSpeechButtons(true); };
+  utt.onend   = () => { state.isSpeaking = false; updateSpeechButtons(false); };
+  utt.onerror = () => { state.isSpeaking = false; updateSpeechButtons(false); };
+  state.speechSynth.speak(utt);
+}
+
+function updateSpeechButtons(speaking) {
+  ["btn-listen-briefing", "btn-listen-briefing-full"].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.textContent = speaking ? "⏹ Stop briefing" : "🔊 Listen to briefing";
+    btn.classList.toggle("is-speaking", speaking);
+    btn.setAttribute("aria-pressed", String(speaking));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// JSON Export
+// ---------------------------------------------------------------------------
+function initJsonExport() {
+  ["btn-download-json", "btn-download-json-full"].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener("click", downloadReportJson);
+  });
+}
+
+function downloadReportJson() {
+  if (!state.report) {
+    alert("No report loaded. Run a demo or upload data first.");
+    return;
+  }
+  const json = JSON.stringify(state.report, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `omni-grid-report-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// AI Auditor Modal
+// ---------------------------------------------------------------------------
+const AUDITOR_SCENARIOS = {
+  geofence: {
+    title: "Geofence Spoofing",
+    before: "Defect: pothole on 5th Cross Road (lat 12.971, lon 77.594)",
+    after:  "Closure photo GPS: lat 12.981, lon 77.601 — 1.3 km away from complaint",
+    checks: [
+      { name: "GPS geofence",       passed: false,  value: "1310 m",    detail: "Closure photo taken 1.3 km from complaint; threshold 200 m." },
+      { name: "Timestamp sequence", passed: true,   value: "36 h",      detail: "Closure filed after complaint; plausible window." },
+      { name: "Defect class match", passed: true,   value: "pothole",   detail: "Defect class in closure matches complaint category." },
+      { name: "Perceptual hash",    passed: true,   value: "unique",    detail: "Image hash not found in other closure records in this dataset." },
+    ],
+    verdict: "suspect", confidence: 0.91,
+    guidance: "Closure location is inconsistent with the complaint site. Field verification required before accepting this closure. Do not mark verified without physical inspection.",
+  },
+  mismatch: {
+    title: "Defect-class Mismatch",
+    before: "Complaint: waterlogging on Outer Ring Road (status: closed)",
+    after:  "Closure photo description: road surface with no visible water or flooding",
+    checks: [
+      { name: "GPS geofence",       passed: true,   value: "48 m",      detail: "Closure photo within acceptable radius." },
+      { name: "Timestamp sequence", passed: true,   value: "12 h",      detail: "Closure filed within 12 hours of complaint." },
+      { name: "Defect class match", passed: false,  value: "mismatch",  detail: "Complaint category is waterlogging; closure photo shows dry road surface — no evidence of water removal or drainage work." },
+      { name: "Perceptual hash",    passed: true,   value: "unique",    detail: "Image hash not found in other closure records in this dataset." },
+    ],
+    verdict: "suspect", confidence: 0.87,
+    guidance: "The closure photo does not match the reported defect category. Either the wrong photo was submitted, or the wrong complaint was closed. Human review required.",
+  },
+  hash: {
+    title: "Reused Evidence / Hash Match",
+    before: "Complaint: pothole on BTM Layout (complaint-042)",
+    after:  "Closure photo hash matches complaint-017 (filed 8 days earlier, different location)",
+    checks: [
+      { name: "GPS geofence",       passed: true,   value: "92 m",      detail: "Closure photo within acceptable radius of complaint." },
+      { name: "Timestamp sequence", passed: true,   value: "2 days",    detail: "Closure filed two days after complaint." },
+      { name: "Defect class match", passed: true,   value: "pothole",   detail: "Defect class matches complaint category." },
+      { name: "Perceptual hash",    passed: false,  value: "duplicate", detail: "Image hash matches a closure photo already submitted for complaint-017 at a different location within this dataset. Possible reuse of evidence." },
+    ],
+    verdict: "suspect", confidence: 0.94,
+    guidance: "The closure photo appears to have been used for a different complaint earlier in this dataset. This may indicate evidence reuse. Field verification required. Note: hash check compares images within this dataset only — not a web or stock-photo search.",
+  },
+  genuine: {
+    title: "Genuine Repair",
+    before: "Complaint: pothole on Jayanagar 4th Block (status: closed)",
+    after:  "Closure photo shows repaired road surface with fresh asphalt fill",
+    checks: [
+      { name: "GPS geofence",       passed: true,   value: "55 m",      detail: "Closure photo within 55 m of complaint; threshold 200 m." },
+      { name: "Timestamp sequence", passed: true,   value: "18 h",      detail: "Closure filed within expected repair window." },
+      { name: "Defect class match", passed: true,   value: "pothole",   detail: "Closure shows road patching consistent with pothole repair." },
+      { name: "Perceptual hash",    passed: true,   value: "unique",    detail: "Image hash not found in other closure records in this dataset." },
+    ],
+    verdict: "verified", confidence: 0.96,
+    guidance: "All deterministic checks pass. Closure appears to be a genuine repair at the correct location with matching evidence. No immediate human review required, but periodic field spot-checks are recommended.",
+  },
+};
+
+function initAuditorModal() {
+  const openBtn  = document.getElementById("btn-open-auditor");
+  const closeBtn = document.getElementById("btn-close-auditor");
+  const runBtn   = document.getElementById("btn-run-audit");
+  const overlay  = document.getElementById("auditor-modal");
+  const panel    = document.getElementById("auditor-modal-panel");
+
+  if (openBtn)  openBtn.addEventListener("click",  () => openAuditor());
+  if (closeBtn) closeBtn.addEventListener("click", () => closeAuditor());
+
+  // Scenario selection
+  document.querySelectorAll(".scenario-card[data-scenario]").forEach(card => {
+    card.addEventListener("click", () => selectScenario(card.dataset.scenario));
+    card.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectScenario(card.dataset.scenario); }
+    });
+  });
+
+  if (runBtn) runBtn.addEventListener("click", () => runAudit());
+
+  if (overlay) {
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) closeAuditor();
+    });
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && overlay && !overlay.classList.contains("hidden")) closeAuditor();
+  });
+}
+
+function openAuditor() {
+  const overlay = document.getElementById("auditor-modal");
+  const panel   = document.getElementById("auditor-modal-panel");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  if (panel) panel.focus();
+  document.body.style.overflow = "hidden";
+}
+
+function closeAuditor() {
+  if (auditTimer) {
+    clearTimeout(auditTimer);
+    auditTimer = null;
+  }
+  const overlay = document.getElementById("auditor-modal");
+  if (!overlay) return;
+  overlay.classList.add("hidden");
+  document.body.style.overflow = "";
+  const openBtn = document.getElementById("btn-open-auditor");
+  if (openBtn) openBtn.focus();
+}
+
+function selectScenario(id) {
+  if (auditTimer) {
+    clearTimeout(auditTimer);
+    auditTimer = null;
+  }
+  state.selectedScenario = id;
+  document.querySelectorAll(".scenario-card").forEach(c => {
+    const active = c.dataset.scenario === id;
+    c.classList.toggle("selected", active);
+    c.setAttribute("aria-selected", String(active));
+  });
+  const runBtn = document.getElementById("btn-run-audit");
+  const hint   = document.getElementById("audit-run-hint");
+  if (runBtn) {
+    runBtn.disabled = false;
+    runBtn.textContent = "Run Audit Pipeline";
+  }
+  if (hint) hint.textContent = `Ready to run: ${AUDITOR_SCENARIOS[id]?.title || id}`;
+
+  const results = document.getElementById("auditor-results");
+  if (results) results.classList.remove("visible");
+}
+
+function runAudit() {
+  const id = state.selectedScenario;
+  if (!id) return;
+  const scenario = AUDITOR_SCENARIOS[id];
+  if (!scenario) return;
+
+  if (auditTimer) {
+    clearTimeout(auditTimer);
+    auditTimer = null;
+  }
+
+  const runBtn = document.getElementById("btn-run-audit");
+  const hint   = document.getElementById("audit-run-hint");
+  if (runBtn) { runBtn.disabled = true; runBtn.textContent = "Running…"; }
+
+  auditTimer = setTimeout(() => {
+    auditTimer = null;
+    if (state.selectedScenario !== id) return;
+    const overlay = document.getElementById("auditor-modal");
+    if (overlay && overlay.classList.contains("hidden")) return;
+
+    if (runBtn) { runBtn.disabled = false; runBtn.textContent = "Run Audit Pipeline"; }
+    if (hint)   hint.textContent = "Audit complete.";
+    renderAuditResults(scenario);
+  }, 600);
+}
+
+function renderAuditResults(scenario) {
+  const results = document.getElementById("auditor-results");
+  if (!results) return;
+
+  const beforeImg = document.getElementById("auditor-before-img");
+  const afterImg  = document.getElementById("auditor-after-img");
+  if (beforeImg) beforeImg.textContent = scenario.before;
+  if (afterImg)  afterImg.textContent  = scenario.after;
+
+  const tbody = document.getElementById("auditor-checks-tbody");
+  if (tbody) {
+    tbody.replaceChildren();
+    scenario.checks.forEach(chk => {
+      const tr = createElem("tr");
+      tr.appendChild(createElem("td", [], chk.name));
+      const resTd = createElem("td");
+      let cls = "inconclusive", lbl = "INCONCLUSIVE";
+      if (chk.passed === true)  { cls = "verified"; lbl = "PASS"; }
+      if (chk.passed === false) { cls = "suspect";  lbl = "FAIL"; }
+      resTd.appendChild(createElem("span", ["badge", cls], lbl));
+      tr.appendChild(resTd);
+      tr.appendChild(createElem("td", [], String(chk.value ?? "—")));
+      tr.appendChild(createElem("td", [], chk.detail || ""));
+      tbody.appendChild(tr);
+    });
+  }
+
+  const verdictBadge = document.getElementById("auditor-verdict-badge");
+  const confidence   = document.getElementById("auditor-confidence");
+  if (verdictBadge) {
+    verdictBadge.textContent = scenario.verdict;
+    verdictBadge.className = `badge ${scenario.verdict}`;
+  }
+  if (confidence) confidence.textContent = `Confidence: ${(scenario.confidence * 100).toFixed(0)}%`;
+
+  const reviewText = document.getElementById("auditor-review-text");
+  if (reviewText) reviewText.textContent = ` ${scenario.guidance}`;
+
+  results.classList.add("visible");
+}
+
+// ---------------------------------------------------------------------------
+// Civic Data Ingestion (browser-side preview)
+// ---------------------------------------------------------------------------
+function initIngestion() {
+  const dropZone  = document.getElementById("ingestion-drop-zone");
+  const fileInput = document.getElementById("ingestion-file-input");
+  const proceedBtn = document.getElementById("btn-ingest-proceed");
+  const cancelBtn  = document.getElementById("btn-ingest-cancel");
+
+  if (dropZone) {
+    dropZone.addEventListener("dragover", e => {
+      e.preventDefault();
+      dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const file = e.dataTransfer.files[0];
+      if (file) processIngestFile(file);
+    });
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (file) processIngestFile(file);
+    });
+  }
+
+  if (proceedBtn) {
+    proceedBtn.addEventListener("click", () => {
+      if (!state.ingestParsed || !state.ingestParsed.geojson) return;
+      if (!state.ingestParsed.valid || state.ingestParsed.valid.length === 0) return;
+      const json = JSON.stringify(state.ingestParsed.geojson);
+      const blob = new Blob([json], { type: "application/json" });
+      const file = new File([blob], "ingested-data.geojson", { type: "application/json" });
+      hideIngestionPreview();
+      switchPage("overview");
+      requestReport("/triage", file, proceedBtn);
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      state.ingestParsed = null;
+      hideIngestionPreview();
+    });
+  }
+}
+
+function processIngestFile(file) {
+  if (file.size > 2 * 1024 * 1024) {
+    showIngestionError("File exceeds the 2 MB limit. Please reduce the file size.");
+    return;
+  }
+
+  const ext = file.name.split(".").pop().toLowerCase();
+  const reader = new FileReader();
+
+  reader.onload = e => {
+    const content = e.target.result;
+    try {
+      if (ext === "geojson" || ext === "json") {
+        handleIngestionJson(content, file.name);
+      } else if (ext === "csv") {
+        handleIngestionCsv(content, file.name);
+      } else if (ext === "pdf") {
+        handleIngestionPdf(content, file.name);
+      } else {
+        showIngestionError(`Unsupported file type: .${ext}. Please upload CSV, JSON, GeoJSON, or PDF.`);
+      }
+    } catch (err) {
+      showIngestionError(`Could not parse file: ${err.message}`);
+    }
+  };
+
+  reader.onerror = () => showIngestionError("Could not read file.");
+  reader.readAsText(file);
+}
+
+function handleIngestionJson(content, filename) {
+  let data;
+  try {
+    data = JSON.parse(content);
+  } catch (e) {
+    showIngestionError("Invalid JSON. Please check the file format.");
+    return;
+  }
+
+  let records = [];
+  let format = "json-array";
+  let notices = [];
+  let geojson = null;
+
+  if (Array.isArray(data)) {
+    records = data;
+    format = "json-array";
+    notices.push({ type: "info", msg: "JSON array detected. Each object will be mapped to a complaint record." });
+  } else if (data && data.type === "FeatureCollection" && Array.isArray(data.features)) {
+    format = "geojson-fc";
+    geojson = data;
+    const pointFeatures = data.features.filter(f => f.geometry && f.geometry.type === "Point");
+    const nonPoint = data.features.length - pointFeatures.length;
+    records = pointFeatures.map(f => ({ ...f.properties, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }));
+    if (nonPoint > 0) {
+      notices.push({ type: "warning", msg: `${nonPoint} non-Point feature(s) skipped. Only GeoJSON Point features are supported.` });
+    }
+    notices.push({ type: "info", msg: "GeoJSON FeatureCollection detected. Point features will be ingested as complaint records." });
+  } else if (data && data.type === "Feature" && data.geometry && data.geometry.type === "Point") {
+    format = "geojson-feature";
+    records = [{ ...data.properties, lat: data.geometry.coordinates[1], lon: data.geometry.coordinates[0] }];
+    geojson = { type: "FeatureCollection", features: [data] };
+    notices.push({ type: "info", msg: "Single GeoJSON Point Feature detected." });
+  } else if (data && typeof data === "object" && !Array.isArray(data)) {
+    const keys = Object.keys(data);
+    const arrKey = keys.find(k => Array.isArray(data[k]));
+    if (arrKey) {
+      records = data[arrKey];
+      format = "json-wrapper";
+      notices.push({ type: "info", msg: `JSON wrapper detected. Using array field "${arrKey}".` });
+    } else {
+      records = [data];
+      format = "json-object";
+      notices.push({ type: "info", msg: "Single JSON object detected. Treating as one complaint record." });
+    }
+  }
+
+  const { valid, invalid, missingCoords, validationRows } = validateIngestRecords(records);
+
+  if (!geojson && valid.length > 0) {
+    geojson = {
+      type: "FeatureCollection",
+      features: valid.map(r => {
+        const coords = extractCoords(r);
+        return {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [coords ? coords.lon : 0, coords ? coords.lat : 0],
+          },
+          properties: r,
+        };
+      }),
+    };
+  }
+
+  state.ingestParsed = { records, rawRows: records, format, valid, invalid, geojson, notices };
+  showIngestionPreview(records.length, valid.length, invalid.length, missingCoords, validationRows, notices, "geojson");
+}
+
+function handleIngestionCsv(content, filename) {
+  const lines = content.trim().split(/\r?\n/);
+  if (lines.length < 2) {
+    showIngestionError("CSV file appears to be empty or has no data rows.");
+    return;
+  }
+
+  const headers = parseCsvLine(lines[0]);
+  const rows = lines.slice(1).map(line => {
+    const vals = parseCsvLine(line);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ""; });
+    return obj;
+  });
+
+  const notices = [
+    { type: "info", msg: "CSV detected. Review and adjust column field mapping below." },
+    { type: "warning", msg: "CSV records without latitude/longitude coordinates will be marked as missing coordinates." },
+  ];
+
+  state.ingestParsed = { records: rows, rawRows: rows, format: "csv", valid: [], invalid: [], geojson: null, notices };
+  renderCsvMapping(headers, rows);
+  applyCsvMappingFromUI();
+}
+
+function handleIngestionPdf(content, filename) {
+  const notices = [
+    { type: "warning", msg: "PDF ingestion is limited to digital tables with embedded text layers. Scanned PDFs require OCR which is not available in this browser interface." },
+    { type: "info", msg: "No complaint records could be automatically parsed from this PDF. Please export the data as CSV or JSON, or use the CLI: omnigrid ingest <file.pdf>" },
+  ];
+
+  state.ingestParsed = { records: [], rawRows: [], format: "pdf", valid: [], invalid: [], geojson: null, notices };
+  showIngestionPreview(0, 0, 0, 0, [], notices, "pdf");
+
+  const proceedBtn = document.getElementById("btn-ingest-proceed");
+  if (proceedBtn) proceedBtn.disabled = true;
+  const hint = document.getElementById("ingestion-proceed-hint");
+  if (hint) hint.textContent = "PDF data could not be extracted. Export as CSV or JSON to proceed.";
+}
+
+function parseCsvLine(line) {
+  const result = [];
+  let inQuote = false;
+  let cur = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && i + 1 < line.length && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuote = !inQuote;
+      }
+    } else if (ch === "," && !inQuote) {
+      result.push(cur.trim().replace(/^"(.*)"$/, "$1"));
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur.trim().replace(/^"(.*)"$/, "$1"));
+  return result;
+}
+
+const OMNI_GRID_FIELDS = [
+  { key: "id",         label: "ID",          required: true },
+  { key: "category",   label: "Category",    required: true },
+  { key: "status",     label: "Status",      required: true },
+  { key: "text",       label: "Description", required: true },
+  { key: "created_at", label: "Created At",  required: true },
+  { key: "lat",        label: "Latitude",    required: false },
+  { key: "lon",        label: "Longitude",   required: false },
+];
+
+const CSV_FIELD_SYNONYMS = {
+  id: ["id", "complaint_id", "complaintid", "ticket_id", "ticketid", "issue_id"],
+  category: ["category", "type", "issue_type", "defect_type", "defect_class"],
+  status: ["status", "state", "complaint_status"],
+  text: ["text", "description", "details", "complaint_text", "notes", "summary"],
+  created_at: ["created_at", "createdat", "date", "timestamp", "filed_at", "datetime"],
+  lat: ["lat", "latitude", "y"],
+  lon: ["lon", "lng", "longitude", "x"],
+};
+
+function suggestMapping(col) {
+  const clean = col.toLowerCase().replace(/[^a-z0-9_]/g, "");
+  for (const field of OMNI_GRID_FIELDS) {
+    const synonyms = CSV_FIELD_SYNONYMS[field.key] || [field.key];
+    if (synonyms.includes(clean)) return field.key;
+  }
+  return "";
+}
+
+function renderCsvMapping(headers, sampleRows) {
+  showEl("csv-mapping-section");
+  const tbody = document.getElementById("csv-mapping-tbody");
+  if (!tbody) return;
+  tbody.replaceChildren();
+
+  const sample = sampleRows[0] || {};
+
+  headers.forEach(col => {
+    const tr = createElem("tr");
+    tr.appendChild(createElem("td", [], col));
+
+    const selTd = createElem("td");
+    const sel = document.createElement("select");
+    sel.dataset.col = col;
+    sel.setAttribute("aria-label", `Map CSV column "${col}" to Omni-Grid field`);
+
+    const blankOpt = createElem("option", [], "— skip —");
+    blankOpt.value = "";
+    sel.appendChild(blankOpt);
+
+    const suggested = suggestMapping(col);
+    OMNI_GRID_FIELDS.forEach(f => {
+      const opt = createElem("option", [], `${f.label}${f.required ? " *" : ""}`);
+      opt.value = f.key;
+      if (suggested === f.key) opt.selected = true;
+      sel.appendChild(opt);
+    });
+
+    sel.addEventListener("change", () => applyCsvMappingFromUI());
+    selTd.appendChild(sel);
+    tr.appendChild(selTd);
+
+    const reqField = OMNI_GRID_FIELDS.find(f => f.key === suggested);
+    tr.appendChild(createElem("td", [], reqField?.required ? "Yes *" : ""));
+    tr.appendChild(createElem("td", [], String(sample[col] || "").substring(0, 40)));
+    tbody.appendChild(tr);
+  });
+}
+
+function applyCsvMappingFromUI() {
+  if (!state.ingestParsed || state.ingestParsed.format !== "csv") return;
+  const selects = document.querySelectorAll("#csv-mapping-tbody select[data-col]");
+  const mapping = {};
+  selects.forEach(sel => {
+    const col = sel.dataset.col;
+    const target = sel.value;
+    if (col && target) mapping[col] = target;
+  });
+
+  const rawRows = state.ingestParsed.rawRows || [];
+  const mappedRecords = rawRows.map(row => {
+    const mapped = {};
+    Object.entries(mapping).forEach(([col, target]) => {
+      if (row[col] !== undefined) mapped[target] = row[col];
+    });
+    return mapped;
+  });
+
+  const { valid, invalid, missingCoords, validationRows } = validateIngestRecords(mappedRecords);
+  const geojson = {
+    type: "FeatureCollection",
+    features: valid.map(r => {
+      const coords = extractCoords(r);
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [coords ? coords.lon : 0, coords ? coords.lat : 0],
+        },
+        properties: r,
+      };
+    }),
+  };
+
+  state.ingestParsed.records = mappedRecords;
+  state.ingestParsed.valid = valid;
+  state.ingestParsed.invalid = invalid;
+  state.ingestParsed.geojson = geojson;
+
+  showIngestionPreview(
+    rawRows.length,
+    valid.length,
+    invalid.length,
+    missingCoords,
+    validationRows,
+    state.ingestParsed.notices,
+    "csv",
+    false
+  );
+}
+
+function validateIngestRecords(records) {
+  const valid = [];
+  const invalid = [];
+  let missingCoords = 0;
+  const validationRows = [];
+
+  records.forEach((r, i) => {
+    const issues = [];
+    if (!r.id && !r.ID && !r.complaint_id) issues.push("Missing ID");
+    if (!r.category && !r.Category && !r.type) issues.push("Missing category");
+    if (!r.status && !r.Status) issues.push("Missing status");
+
+    const coords = extractCoords(r);
+    if (!coords) {
+      issues.push("Missing/invalid coordinates");
+      missingCoords++;
+    }
+
+    if (issues.length === 0) {
+      valid.push(r);
+      if (i < 20) {
+        validationRows.push({ row: i + 1, status: "pass", issues: [] });
+      }
+    } else {
+      invalid.push(r);
+      if (i < 20) {
+        const status = issues.includes("Missing/invalid coordinates") && issues.length === 1 ? "warn" : "fail";
+        validationRows.push({ row: i + 1, status, issues });
+      }
+    }
+  });
+
+  return { valid, invalid, missingCoords, validationRows };
+}
+
+function showIngestionPreview(total, validCount, invalidCount, missingCoords, validationRows, notices, format, rebuildMapping = true) {
+  const section = document.getElementById("ingestion-preview-section");
+  if (section) section.style.display = "";
+
+  setText("preview-total-rows",  total);
+  setText("preview-valid-rows",  validCount);
+  setText("preview-invalid-rows", invalidCount);
+  setText("preview-coord-missing", missingCoords);
+
+  const noticesContainer = document.getElementById("ingestion-format-notices");
+  if (noticesContainer) {
+    noticesContainer.replaceChildren();
+    noticesContainer.style.marginTop = "0.75rem";
+    (notices || []).forEach(n => {
+      const div = createElem("div", ["ingestion-notice", n.type], n.msg);
+      noticesContainer.appendChild(div);
+    });
+  }
+
+  if (rebuildMapping) {
+    hideEl("csv-mapping-section");
+    hideEl("geojson-notice");
+    hideEl("pdf-section");
+
+    if (format === "csv")    showEl("csv-mapping-section");
+    if (format === "geojson") showEl("geojson-notice");
+    if (format === "pdf")    showEl("pdf-section");
+  }
+
+  const validationWrapper = document.getElementById("validation-rows-wrapper");
+  const validationList    = document.getElementById("validation-row-list");
+  if (validationRows && validationRows.length > 0 && validationList) {
+    if (validationWrapper) validationWrapper.style.display = "";
+    validationList.replaceChildren();
+    validationRows.forEach(vr => {
+      const row = createElem("div", ["validation-row"]);
+      row.setAttribute("role", "listitem");
+      const icon = createElem("span", ["val-icon", vr.status]);
+      icon.textContent = vr.status === "pass" ? "✓" : vr.status === "warn" ? "⚠" : "✗";
+      row.appendChild(icon);
+      const txt = createElem("span", [],
+        `Row ${vr.row}: ${vr.issues.length === 0 ? "Valid" : vr.issues.join(", ")}`);
+      row.appendChild(txt);
+      validationList.appendChild(row);
+    });
+  } else if (validationWrapper) {
+    validationWrapper.style.display = "none";
+  }
+
+  const mediaNotice = document.getElementById("media-limitation-notice");
+  if (mediaNotice) mediaNotice.style.display = format !== "pdf" ? "" : "none";
+
+  const proceedBtn = document.getElementById("btn-ingest-proceed");
+  const proceedHint = document.getElementById("ingestion-proceed-hint");
+  if (proceedBtn) {
+    const canProceed = validCount > 0 && format !== "pdf";
+    proceedBtn.disabled = !canProceed;
+    if (proceedHint) {
+      if (canProceed) {
+        proceedHint.textContent = `${validCount} valid records ready. Click 'Process & Replace Report' to run triage.`;
+      } else if (format === "pdf") {
+        proceedHint.textContent = "PDF data could not be extracted automatically. Export as CSV or JSON.";
+      } else {
+        proceedHint.textContent = "No valid records found. Check field mapping and file format.";
+      }
+    }
+  }
+}
+
+function hideIngestionPreview() {
+  const section = document.getElementById("ingestion-preview-section");
+  if (section) section.style.display = "none";
+  const noticesContainer = document.getElementById("ingestion-format-notices");
+  if (noticesContainer) noticesContainer.replaceChildren();
+  hideEl("csv-mapping-section");
+  hideEl("geojson-notice");
+  hideEl("pdf-section");
+  hideEl("validation-rows-wrapper");
+  hideEl("media-limitation-notice");
+}
+
+function showIngestionError(message) {
+  const noticesContainer = document.getElementById("ingestion-format-notices");
+  if (noticesContainer) {
+    noticesContainer.replaceChildren();
+    noticesContainer.style.marginTop = "0.75rem";
+    noticesContainer.appendChild(createElem("div", ["ingestion-notice", "error"], message));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Clear Report (reset to empty state)
+// ---------------------------------------------------------------------------
+function clearReport() {
+  state.report = null;
+  state.verdictsMap.clear();
+  state.complaintsMap.clear();
+  state.markersMap.clear();
+  state.circlesMap.clear();
+  state.selectedComplaintId = null;
+  state.selectedHotspotId   = null;
+
+  ["stat-total-complaints","stat-total-hotspots","stat-suspect-closures","stat-verified-closures"].forEach(id => setText(id, "—"));
+  ["tab-count-briefing","tab-count-hotspots","tab-count-issues"].forEach(id => setText(id, ""));
+  setText("map-count-badge", "—");
+
+  if (state.mapLayers.hotspots)   state.mapLayers.hotspots.clearLayers();
+  if (state.mapLayers.complaints) state.mapLayers.complaints.clearLayers();
+  if (state.map) state.map.setView([12.9716, 77.5946], 12);
+
+  renderSummaryClaims();
+  renderHotspotsList();
+  renderComplaintsList();
+  renderInspectionEmptyState();
+}
+
+// ---------------------------------------------------------------------------
+// App Initialization
+// ---------------------------------------------------------------------------
+function initApp() {
+  initTheme();
+  initPageNav();
+  initPanelTabs();
+  initSummaryCards();
+  setupFilterControls();
+  initAuditorModal();
+  initIngestion();
+  initSpeech();
+  initJsonExport();
+  initOrUpdateMap();
+
+  const btnReal = document.getElementById("btn-run-demo");
+  if (btnReal) {
+    btnReal.addEventListener("click", event => {
+      requestReport("/demo", null, event.currentTarget);
+    });
+  }
+
+  const btnSynthetic = document.getElementById("btn-run-demo-synthetic");
+  if (btnSynthetic) {
+    btnSynthetic.addEventListener("click", event => {
+      requestReport("/demo/synthetic", null, event.currentTarget);
+    });
+  }
+
+  document.getElementById("claims-list-container")?.addEventListener("click", event => {
+    const demoButton = event.target.closest("[data-run-demo]");
+    if (demoButton) requestReport("/demo/synthetic", null, demoButton);
+  });
+
+  const geojsonUpload = document.getElementById("geojson-upload");
+  if (geojsonUpload) {
+    geojsonUpload.addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        setApiStatus("Selected file exceeds the 2 MiB limit.", "error");
+        geojsonUpload.value = "";
+        return;
+      }
+      const ext = file.name.split(".").pop().toLowerCase();
+      if (ext === "csv" || ext === "pdf") {
+        switchPage("ingestion");
+        processIngestFile(file);
+      } else {
+        requestReport("/triage", file);
+      }
+    });
+  }
+
+  setApiStatus(
+    "Choose a demo dataset above to run through the live API, or upload a supported file.",
+    "idle"
+  );
+}
+
+// Start application on DOM ready
 document.addEventListener("DOMContentLoaded", initApp);
