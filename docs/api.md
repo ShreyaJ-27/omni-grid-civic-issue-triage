@@ -90,7 +90,7 @@ diagnostics include an opaque request identifier and exception type only.
 
 ## `POST /demo`
 
-The dashboard's **Run Synthetic Demo** action calls this endpoint. It loads
+The dashboard's **Run Demo** action calls this endpoint. It loads
 `data/synthetic/complaints.geojson` from the checked-in repository and runs
 the same canonical pipeline in mock mode. It accepts no request body and no
 caller-supplied file path. The response is the actual schema-validated `Report`

@@ -304,19 +304,18 @@ def generate_summary(
 
     valid_ids: set[str] = {h.id for h in hotspots} | {v.complaint_id for v in verdicts}
 
-    prompt = (
-        f"Summarise the following civic complaint triage results. "
-        f"Generate 3 to 6 concise, factual claims in the JSON schema shown. "
-        f"Use ONLY the numbers from 'facts'. Cite ONLY IDs from 'valid_ids'.\n\n"
-        f"valid_ids: {json.dumps(sorted(valid_ids))}\n\n"
-        f"facts: {json.dumps(facts, default=str)}"
-    )
-
     # Mock-mode callers can explicitly request templates instead of simulated
     # model output so reports never imply that inference took place.
     fallback_triggered = deterministic_fallback
     raw_claims: list[Claim] = []
     if not deterministic_fallback:
+        prompt = (
+            f"Summarise the following civic complaint triage results. "
+            f"Generate 3 to 6 concise, factual claims in the JSON schema shown. "
+            f"Use ONLY the numbers from 'facts'. Cite ONLY IDs from 'valid_ids'.\n\n"
+            f"valid_ids: {json.dumps(sorted(valid_ids))}\n\n"
+            f"facts: {json.dumps(facts, default=str)}"
+        )
         try:
             response = client.generate_structured(
                 prompt=prompt,

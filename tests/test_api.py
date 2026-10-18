@@ -70,7 +70,7 @@ def test_dashboard_is_served_from_the_api_origin(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert 'id="btn-run-demo"' in response.text
-    assert "Run Synthetic Demo" in response.text
+    assert "Run Demo" in response.text
     assert script_response.status_code == 200
     assert 'requestReport("/demo", null)' in script_response.text
 
