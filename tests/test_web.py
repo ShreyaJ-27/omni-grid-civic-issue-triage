@@ -44,7 +44,7 @@ def test_index_html_exists_as_entrypoint():
 def test_frontend_uses_live_api_without_stale_report_fallback():
     """The hosted dashboard renders only reports returned by the API."""
     app_js = APP_JS.read_text(encoding="utf-8")
-    assert 'requestReport("/demo", null)' in app_js
+    assert 'requestReport("/demo", null, event.currentTarget)' in app_js
     assert 'requestReport("/triage", file)' in app_js
     assert "demo/report.json" not in app_js
     assert "FALLBACK_REPORT" not in app_js
@@ -104,14 +104,18 @@ def test_dashboard_starts_idle_with_welcome_and_per_tab_empty_states():
     assert "Loading complaints..." not in html
     assert "state.report = null;" in app_js
     assert "if (state.requestInProgress) return;" in app_js
+    assert 'requestReport("/demo/synthetic", null, demoButton)' in app_js
 
 
 def test_dashboard_request_errors_expose_retry_and_loading_feedback():
     app_js = APP_JS.read_text(encoding="utf-8")
     assert 'createElem("button", ["retry-btn"], "Retry")' in app_js
-    assert 'demoButton.classList.add("is-loading")' in app_js
+    assert "state.requestInProgress = true;" in app_js
     assert "state.requestInProgress = false;" in app_js
+    assert "state.lastRequest = { endpoint, file };" in app_js
     assert "state.lastRequest.endpoint, state.lastRequest.file" in app_js
+    assert 'triggerButton.classList.add("is-loading")' in app_js
+    assert 'triggerButton.setAttribute("aria-busy", "true")' in app_js
 
 
 def test_dashboard_exposes_demo_and_geojson_upload_controls():

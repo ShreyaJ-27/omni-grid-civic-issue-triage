@@ -81,16 +81,22 @@ function initApp() {
   setApiStatus("Choose a demo dataset above to run through the live API, or upload a GeoJSON file.");
   const btnReal = document.getElementById("btn-run-demo");
   if (btnReal) {
-    btnReal.addEventListener("click", () => {
-      requestReport("/demo", null);
+    btnReal.addEventListener("click", event => {
+      requestReport("/demo", null, event.currentTarget);
     });
   }
   const btnSynthetic = document.getElementById("btn-run-demo-synthetic");
   if (btnSynthetic) {
-    btnSynthetic.addEventListener("click", () => {
-      requestReport("/demo/synthetic", null);
+    btnSynthetic.addEventListener("click", event => {
+      requestReport("/demo/synthetic", null, event.currentTarget);
     });
   }
+  document.getElementById("claims-list-container").addEventListener("click", event => {
+    const demoButton = event.target.closest("[data-run-demo]");
+    if (demoButton) {
+      requestReport("/demo/synthetic", null, demoButton);
+    }
+  });
   document.getElementById("geojson-upload").addEventListener("change", event => {
     const file = event.target.files[0];
     if (file) requestReport("/triage", file);
@@ -109,8 +115,8 @@ function setApiStatus(message, status = "idle") {
     if (state.lastRequest) {
       const retryButton = createElem("button", ["retry-btn"], "Retry");
       retryButton.type = "button";
-      retryButton.addEventListener("click", () => {
-        requestReport(state.lastRequest.endpoint, state.lastRequest.file);
+      retryButton.addEventListener("click", event => {
+        requestReport(state.lastRequest.endpoint, state.lastRequest.file, event.currentTarget);
       });
       banner.appendChild(retryButton);
     }
@@ -181,10 +187,18 @@ function apiErrorMessage(error) {
   return error.message || "The API request failed.";
 }
 
-async function requestReport(endpoint, file) {
+async function requestReport(endpoint, file, triggerButton = null) {
+  if (state.requestInProgress) return;
+  state.requestInProgress = true;
+  state.lastRequest = { endpoint, file };
   const demoButtons = document.querySelectorAll(".action-btn");
   const fileInput = document.getElementById("geojson-upload");
   demoButtons.forEach(btn => (btn.disabled = true));
+  if (triggerButton) {
+    triggerButton.disabled = true;
+    triggerButton.setAttribute("aria-busy", "true");
+    triggerButton.classList.add("is-loading");
+  }
   fileInput.disabled = true;
   clearReport();
   document.getElementById("claims-list-container").replaceChildren(
@@ -240,7 +254,17 @@ async function requestReport(endpoint, file) {
     setApiStatus(apiErrorMessage(error), "error");
   } finally {
     clearTimeout(timeout);
+    state.requestInProgress = false;
     demoButtons.forEach(btn => (btn.disabled = false));
+    demoButtons.forEach(btn => {
+      btn.removeAttribute("aria-busy");
+      btn.classList.remove("is-loading");
+    });
+    if (triggerButton && !triggerButton.classList.contains("action-btn")) {
+      triggerButton.disabled = false;
+      triggerButton.removeAttribute("aria-busy");
+      triggerButton.classList.remove("is-loading");
+    }
     fileInput.disabled = false;
     fileInput.value = "";
   }
