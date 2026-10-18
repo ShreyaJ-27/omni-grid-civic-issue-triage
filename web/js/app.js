@@ -76,10 +76,19 @@ async function initApp() {
   setupFilterControls();
   state.report = { hotspots: [], verdicts: [], claims: [], stats: {}, complaints: [] };
   initOrUpdateMap();
-  setApiStatus("Run the checked-in synthetic complaints through the live API, or upload a GeoJSON file.");
-  document.getElementById("btn-run-demo").addEventListener("click", () => {
-    requestReport("/demo", null);
-  });
+  setApiStatus("Choose a demo dataset above to run through the live API, or upload a GeoJSON file.");
+  const btnReal = document.getElementById("btn-run-demo");
+  if (btnReal) {
+    btnReal.addEventListener("click", () => {
+      requestReport("/demo", null);
+    });
+  }
+  const btnSynthetic = document.getElementById("btn-run-demo-synthetic");
+  if (btnSynthetic) {
+    btnSynthetic.addEventListener("click", () => {
+      requestReport("/demo/synthetic", null);
+    });
+  }
   document.getElementById("geojson-upload").addEventListener("change", event => {
     const file = event.target.files[0];
     if (file) requestReport("/triage", file);
@@ -164,16 +173,19 @@ function apiErrorMessage(error) {
 }
 
 async function requestReport(endpoint, file) {
-  const demoButton = document.getElementById("btn-run-demo");
+  const demoButtons = document.querySelectorAll(".action-btn");
   const fileInput = document.getElementById("geojson-upload");
-  demoButton.disabled = true;
+  demoButtons.forEach(btn => (btn.disabled = true));
   fileInput.disabled = true;
   clearReport();
   setApiStatus("Contacting the API. A free service may take up to three minutes to wake.", "loading");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 180000);
   try {
-    const options = { method: "POST", signal: controller.signal };
+    const options = {
+      method: file ? "POST" : "GET",
+      signal: controller.signal
+    };
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
         const error = new Error("Selected file exceeds the 2 MiB limit.");
@@ -216,7 +228,7 @@ async function requestReport(endpoint, file) {
     setApiStatus(apiErrorMessage(error), "error");
   } finally {
     clearTimeout(timeout);
-    demoButton.disabled = false;
+    demoButtons.forEach(btn => (btn.disabled = false));
     fileInput.disabled = false;
     fileInput.value = "";
   }
